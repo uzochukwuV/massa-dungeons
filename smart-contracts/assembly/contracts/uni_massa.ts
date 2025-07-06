@@ -5,7 +5,7 @@ import {
     sendMessage,
     Storage,
 } from "@massalabs/massa-as-sdk";
-import { Args, Result } from "@massalabs/as-types";
+import { Args, Result, stringToBytes } from "@massalabs/as-types";
 import { IERC20 } from "../interfaces";
 
 // Core constants
@@ -58,6 +58,7 @@ export class Pool {
     }
 
     static deserialize(data: StaticArray<u8>): Pool {
+        
         const args = new Args(data);
         return new Pool(
             new Address(args.nextString().unwrap()),
@@ -158,12 +159,12 @@ export function getPool(tokenA: Address, tokenB: Address): Pool | null {
     if (!Storage.has(key)) {
         return null;
     }
-    return Pool.deserialize(Storage.get(key));
+    return Pool.deserialize(stringToBytes(Storage.get(key)));
 }
 
 export function savePool(pool: Pool): void {
     const key = "pool:" + getPoolKey(pool.tokenA, pool.tokenB);
-    Storage.set(key, pool.serialize());
+    Storage.set(key, pool.serialize().toString());
 }
 
 export function getAmountOut(amountIn: u64, reserveIn: u64, reserveOut: u64, fee: u64): u64 {
@@ -230,8 +231,8 @@ export function detectArbitrage(): ArbitrageOpportunity[] {
     
     for (let i = 0; i < poolKeys.length; i++) {
         for (let j = i + 1; j < poolKeys.length; j++) {
-            const pool1 = Pool.deserialize(Storage.get("pool:" + poolKeys[i]));
-            const pool2 = Pool.deserialize(Storage.get("pool:" + poolKeys[j]));
+            const pool1 = Pool.deserialize(stringToBytes(Storage.get("pool:" + poolKeys[i])));
+            const pool2 = Pool.deserialize(stringToBytes(Storage.get("pool:" + poolKeys[j])));
             
             // Check for triangular arbitrage opportunities
             if (pool1.tokenA.toString() == pool2.tokenA.toString() || 

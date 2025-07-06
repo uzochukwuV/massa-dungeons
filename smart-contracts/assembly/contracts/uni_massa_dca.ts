@@ -4,7 +4,7 @@ import {
     generateEvent,
     Storage,
 } from "@massalabs/massa-as-sdk";
-import { Args } from "@massalabs/as-types";
+import { Args, stringToBytes } from "@massalabs/as-types";
 import { IERC20 } from "../interfaces";
 import {
     ONE_UNIT,
@@ -286,7 +286,7 @@ export function processLimitOrders(): void {
         
         if (!Storage.has(orderKey)) continue;
         
-        const order = LimitOrder.deserialize(Storage.get(orderKey));
+        const order = LimitOrder.deserialize(stringToBytes(Storage.get(orderKey)));
         
         if (!order.isActive || order.expiry < currentTime) {
             continue;
@@ -333,7 +333,7 @@ export function executeLimitOrder(order: LimitOrder, pool: Pool): void {
     
     // Mark order as inactive
     order.isActive = false;
-    Storage.set("order:" + order.id.toString(), order.serialize());
+    Storage.set("order:" + order.id.toString(), order.serialize().toString());
     
     savePool(pool);
     
@@ -349,7 +349,7 @@ export function executeDCAStrategies(): void {
         
         if (!Storage.has(dcaKey)) continue;
         
-        const strategy = DCAStrategy.deserialize(Storage.get(dcaKey));
+        const strategy = DCAStrategy.deserialize(stringToBytes(Storage.get(dcaKey)));
         
         if (!strategy.isActive || strategy.currentPeriod >= strategy.totalPeriods) {
             continue;
@@ -399,7 +399,7 @@ export function executeDCAOrder(strategy: DCAStrategy): void {
             strategy.isActive = false;
         }
         
-        Storage.set("dca:" + strategy.id.toString(), strategy.serialize());
+        Storage.set("dca:" + strategy.id.toString(), strategy.serialize().toString());
         savePool(pool);
         
         generateEvent(`MassaSwap: DCA executed - ${strategy.id}`);
@@ -415,7 +415,7 @@ export function updateYieldFarmingRewards(): void {
         
         if (!Storage.has(poolKey)) continue;
         
-        const yieldPool = YieldPool.deserialize(Storage.get(poolKey));
+        const yieldPool = YieldPool.deserialize(stringToBytes(Storage.get(poolKey)));
         
         if (!yieldPool.isActive || yieldPool.totalStaked == 0) continue;
         
@@ -426,7 +426,7 @@ export function updateYieldFarmingRewards(): void {
         yieldPool.rewardPerTokenStored += rewardPerToken;
         yieldPool.lastUpdateTime = currentTime;
         
-        Storage.set(poolKey, yieldPool.serialize());
+        Storage.set(poolKey, yieldPool.serialize().toString());
     }
 }
 
@@ -435,7 +435,7 @@ export function autoAdjustFees(): void {
     
     for (let i = 0; i < poolKeys.length; i++) {
         const poolKey = "pool:" + poolKeys[i];
-        const pool = Pool.deserialize(Storage.get(poolKey));
+        const pool = Pool.deserialize(stringToBytes(Storage.get(poolKey)));
         
         // Calculate volatility based on price changes
         const volatility = calculatePoolVolatility(pool);
@@ -449,7 +449,7 @@ export function autoAdjustFees(): void {
             pool.fee = 30; // 0.3% for low volatility
         }
         
-        Storage.set(poolKey, pool.serialize());
+        Storage.set(poolKey, pool.serialize().toString());
     }
 }
 
@@ -489,7 +489,7 @@ export function createDCAStrategy(args: StaticArray<u8>): void {
     );
     
     // Store strategy
-    Storage.set("dca:" + dcaCount.toString(), strategy.serialize());
+    Storage.set("dca:" + dcaCount.toString(), strategy.serialize().toString());
     Storage.set("dca_count", (dcaCount + 1).toString());
     
     // Store user's strategy reference
@@ -530,7 +530,7 @@ export function createLimitOrder(args: StaticArray<u8>): void {
     );
     
     // Store order
-    Storage.set("order:" + orderCount.toString(), order.serialize());
+    Storage.set("order:" + orderCount.toString(), order.serialize().toString());
     Storage.set("order_count", (orderCount + 1).toString());
     
     // Store user's order reference
@@ -561,7 +561,7 @@ export function createYieldPool(args: StaticArray<u8>): void {
     );
     
     // Store yield pool
-    Storage.set("yield_pool:" + yieldPoolCount.toString(), yieldPool.serialize());
+    Storage.set("yield_pool:" + yieldPoolCount.toString(), yieldPool.serialize().toString());
     Storage.set("yield_pool_count", (yieldPoolCount + 1).toString());
     
     generateEvent(`MassaSwap: Yield pool created - ${yieldPoolCount}`);
@@ -580,7 +580,7 @@ export function stakeLP(args: StaticArray<u8>): void {
         return;
     }
     
-    const yieldPool = YieldPool.deserialize(Storage.get(yieldPoolKey));
+    const yieldPool = YieldPool.deserialize(stringToBytes(Storage.get(yieldPoolKey)));
     
     // Update rewards before staking
     updateYieldFarmingRewards();
@@ -604,7 +604,7 @@ export function stakeLP(args: StaticArray<u8>): void {
     
     // Update yield pool total
     yieldPool.totalStaked += amount;
-    Storage.set(yieldPoolKey, yieldPool.serialize());
+    Storage.set(yieldPoolKey, yieldPool.serialize().toString());
     
     generateEvent(`MassaSwap: LP tokens staked - ${amount}`);
 }
@@ -622,7 +622,7 @@ export function unstakeLP(args: StaticArray<u8>): void {
         return;
     }
     
-    const yieldPool = YieldPool.deserialize(Storage.get(yieldPoolKey));
+    const yieldPool = YieldPool.deserialize(stringToBytes(Storage.get(yieldPoolKey)));
     
     // Update rewards before unstaking
     updateYieldFarmingRewards();
@@ -653,7 +653,7 @@ export function unstakeLP(args: StaticArray<u8>): void {
     
     // Update yield pool total
     yieldPool.totalStaked -= amount;
-    Storage.set(yieldPoolKey, yieldPool.serialize());
+    Storage.set(yieldPoolKey, yieldPool.serialize().toString());
     
     generateEvent(`MassaSwap: LP tokens unstaked - ${amount}, Rewards: ${rewardAmount}`);
 }
@@ -677,7 +677,7 @@ export function claimRewards(args: StaticArray<u8>): void {
         return;
     }
     
-    const yieldPool = YieldPool.deserialize(Storage.get(yieldPoolKey));
+    const yieldPool = YieldPool.deserialize(stringToBytes(Storage.get(yieldPoolKey)));
     
     // Update rewards
     updateYieldFarmingRewards();

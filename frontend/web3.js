@@ -1,7 +1,4 @@
-// MassaSwap JavaScript Interaction Script
-// This script provides functions to interact with MassaSwap DEX smart contracts on Massa blockchain
 
-// Configuration and Constants
 const CONFIG = {
     // Update these addresses with your deployed contract addresses
     MASSASWAP_CORE_ADDRESS: "AS1xS7YryYp3NxXqv9KZspi9BtZnLBTtQY5GBGcSkNWu9mY8a7jg",
@@ -9,7 +6,6 @@ const CONFIG = {
     USDC_ADDRESS: "AS1dJ8mrm2cVSdZVZLXo43wRx5FxywZ9BmxiUmXCy7Tx72XNbit8",
     WMAS_ADDRESS: "AS12XdqMFYx1Ghd5LRzMq9hw81hVgBAYX9zqMJVZeVyM9nRn4C2pt",
     
-    // Massa network providers
     PROVIDERS: [
         {
             url: "http://149.202.84.7:33035",
@@ -99,7 +95,7 @@ class MassaSwapClient {
             if (evt.data.includes("MassaSwap:")) {
                 console.log("MassaSwap Event:", evt.data);
                 
-                // Emit custom event for UI updates
+                
                 const customEvent = new CustomEvent("massaswap-event", {
                     detail: {
                         data: evt.data,
@@ -123,13 +119,13 @@ class MassaSwapClient {
     }
 }
 
-// Core DEX Functions
+
 class MassaSwapDEX {
     constructor(client) {
         this.client = client;
     }
 
-    // Create a new liquidity pool
+    
     async createPool(tokenA, tokenB, amountA, amountB) {
         this.client.ensureInitialized();
         
