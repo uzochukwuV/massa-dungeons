@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MassaSwap DEX - Decentralized Exchange on Massa</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        massa: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        .success {
+            border-color: #10b981;
+            background-color: #ecfdf5;
+        }
+        .error {
+            border-color: #ef4444;
+            background-color: #fef2f2;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation -->
+    <nav class="gradient-bg text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <h1 class="text-2xl font-bold">MassaSwap</h1>
+                    <span class="ml-2 text-sm opacity-75">DEX on Massa</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div id="connection-status" class="flex items-center">
+                        <div class="w-3 h-3 bg-red-400 rounded-full mr-2"></div>
+                        <span class="text-sm">Disconnected</span>
+                    </div>
+                    <button id="connect-wallet" class="bg-white text-purple-600 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 transition-colors">
+                        Connect Wallet
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Account Info -->
+        <div id="account-info" class="bg-white rounded-xl shadow-lg p-6 mb-8 hidden">
+            <h2 class="text-xl font-semibold mb-4">Account Information</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <p class="text-sm text-gray-600">Address</p>
+                    <p id="user-address" class="font-mono text-sm break-all">-</p>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <p class="text-sm text-gray-600">USDC Balance</p>
+                    <p id="usdc-balance" class="text-lg font-semibold">0.00</p>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <p class="text-sm text-gray-600">WMAS Balance</p>
+                    <p id="wmas-balance" class="text-lg font-semibold">0.00</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Tabs -->
+        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div class="border-b border-gray-200">
+                <nav class="flex space-x-8 px-6" aria-label="Tabs">
+                    <button class="tab-button active py-4 px-1 border-b-2 font-medium text-sm" data-tab="swap">
+                        Swap
+                    </button>
+                    <button class="tab-button py-4 px-1 border-b-2 font-medium text-sm" data-tab="liquidity">
+                        Liquidity
+                    </button>
+                    <button class="tab-button py-4 px-1 border-b-2 font-medium text-sm" data-tab="advanced">
+                        Advanced
+                    </button>
+                    <button class="tab-button py-4 px-1 border-b-2 font-medium text-sm" data-tab="farming">
+                        Yield Farming
+                    </button>
+                    <button class="tab-button py-4 px-1 border-b-2 font-medium text-sm" data-tab="analytics">
+                        Analytics
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="p-6">
+                <!-- Swap Tab -->
+                <div id="swap-tab" class="tab-content">
+                    <div class="max-w-md mx-auto">
+                        <h3 class="text-lg font-semibold mb-4">Token Swap</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">From</label>
+                                <div class="flex space-x-2">
+                                    <select id="token-in" class="flex-1 border border-gray-300 rounded-lg px-3 py-2">
+                                        <option value="USDC">USDC</option>
+                                        <option value="WMAS">WMAS</option>
+                                    </select>
+                                    <input id="amount-in" type="number" placeholder="0.0" class="flex-2 border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                            </div>
+                            
+                            <div class="flex justify-center">
+                                <button id="swap-direction" class="bg-gray-100 hover:bg-gray-200 rounded-full p-2 transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path>
+                                    </svg>
+                                </button>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">To</label>
+                                <div class="flex space-x-2">
+                                    <select id="token-out" class="flex-1 border border-gray-300 rounded-lg px-3 py-2">
+                                        <option value="WMAS">WMAS</option>
+                                        <option value="USDC">USDC</option>
+                                    </select>
+                                    <input id="amount-out" type="number" placeholder="0.0" class="flex-2 border border-gray-300 rounded-lg px-3 py-2" readonly>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Slippage Tolerance (%)</label>
+                                <input id="slippage" type="number" value="1" min="0.1" max="50" step="0.1" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                            </div>
+
+                            <button id="execute-swap" class="w-full bg-massa-600 text-white py-3 rounded-lg font-medium hover:bg-massa-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                Swap Tokens
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Liquidity Tab -->
+                <div id="liquidity-tab" class="tab-content hidden">
+                    <div class="max-w-2xl mx-auto">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <!-- Add Liquidity -->
+                            <div class="card-hover bg-gray-50 p-6 rounded-lg">
+                                <h3 class="text-lg font-semibold mb-4">Add Liquidity</h3>
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Token A Amount</label>
+                                        <input id="liquidity-amount-a" type="number" placeholder="0.0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Token B Amount</label>
+                                        <input id="liquidity-amount-b" type="number" placeholder="0.0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                    </div>
+                                    <button id="add-liquidity" class="w-full bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 transition-colors">
+                                        Add Liquidity
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Remove Liquidity -->
+                            <div class="card-hover bg-gray-50 p-6 rounded-lg">
+                                <h3 class="text-lg font-semibold mb-4">Remove Liquidity</h3>
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">LP Token Amount</label>
+                                        <input id="remove-liquidity-amount" type="number" placeholder="0.0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                    </div>
+                                    <div class="text-sm text-gray-600">
+                                        <p>Your LP Balance: <span id="lp-balance">0.00</span></p>
+                                    </div>
+                                    <button id="remove-liquidity" class="w-full bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700 transition-colors">
+                                        Remove Liquidity
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Create Pool -->
+                        <div class="mt-8 card-hover bg-blue-50 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold mb-4">Create New Pool</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Initial USDC Amount</label>
+                                    <input id="pool-usdc-amount" type="number" placeholder="0.0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Initial WMAS Amount</label>
+                                    <input id="pool-wmas-amount" type="number" placeholder="0.0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                            </div>
+                            <button id="create-pool" class="mt-4 w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                                Create Pool
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Advanced Tab -->
+                <div id="advanced-tab" class="tab-content hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <!-- DCA Strategy -->
+                        <div class="card-hover bg-gray-50 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold mb-4">DCA Strategy</h3>
+                            <div class="space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">From Token</label>
+                                        <select id="dca-token-in" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                            <option value="USDC">USDC</option>
+                                            <option value="WMAS">WMAS</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">To Token</label>
+                                        <select id="dca-token-out" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                            <option value="WMAS">WMAS</option>
+                                            <option value="USDC">USDC</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Amount Per Period</label>
+                                    <input id="dca-amount" type="number" placeholder="10.0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Interval (periods)</label>
+                                        <input id="dca-interval" type="number" placeholder="100" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Total Periods</label>
+                                        <input id="dca-total" type="number" placeholder="10" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                    </div>
+                                </div>
+                                <button id="create-dca" class="w-full bg-purple-600 text-white py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors">
+                                    Create DCA Strategy
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Limit Order -->
+                        <div class="card-hover bg-gray-50 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold mb-4">Limit Order</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Order Type</label>
+                                    <select id="order-type" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                        <option value="buy">Buy</option>
+                                        <option value="sell">Sell</option>
+                                    </select>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">From Token</label>
+                                        <select id="order-token-in" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                            <option value="USDC">USDC</option>
+                                            <option value="WMAS">WMAS</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">To Token</label>
+                                        <select id="order-token-out" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                            <option value="WMAS">WMAS</option>
+                                            <option value="USDC">USDC</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Amount In</label>
+                                    <input id="order-amount-in" type="number" placeholder="100.0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Minimum Amount Out</label>
+                                    <input id="order-min-out" type="number" placeholder="45.0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Expiry (hours)</label>
+                                    <input id="order-expiry" type="number" placeholder="24" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                                <button id="create-order" class="w-full bg-orange-600 text-white py-2 rounded-lg font-medium hover:bg-orange-700 transition-colors">
+                                    Create Limit Order
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Autonomous Engine -->
+                        <div class="lg:col-span-2 card-hover bg-gradient-to-r from-purple-50 to-blue-50 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold mb-4">Autonomous Engine</h3>
+                            <p class="text-gray-600 mb-4">The autonomous engine automatically executes arbitrage opportunities, limit orders, and DCA strategies.</p>
+                            <div class="flex space-x-4">
+                                <button id="start-autonomous" class="bg-green-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors">
+                                    Start Engine
+                                </button>
+                                <button id="stop-autonomous" class="bg-red-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-red-700 transition-colors">
+                                    Stop Engine
+                                </button>
+                                <div id="autonomous-status" class="flex items-center">
+                                    <div class="w-3 h-3 bg-gray-400 rounded-full mr-2"></div>
+                                    <span class="text-sm">Stopped</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Yield Farming Tab -->
+                <div id="farming-tab" class="tab-content hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <!-- Stake LP Tokens -->
+                        <div class="card-hover bg-gray-50 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold mb-4">Stake LP Tokens</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Yield Pool ID</label>
+                                    <input id="stake-pool-id" type="number" placeholder="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">LP Amount to Stake</label>
+                                    <input id="stake-amount" type="number" placeholder="100.0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                                <button id="stake-lp" class="w-full bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 transition-colors">
+                                    Stake LP Tokens
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Unstake LP Tokens -->
+                        <div class="card-hover bg-gray-50 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold mb-4">Unstake LP Tokens</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Yield Pool ID</label>
+                                    <input id="unstake-pool-id" type="number" placeholder="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">LP Amount to Unstake</label>
+                                    <input id="unstake-amount" type="number" placeholder="50.0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                                <button id="unstake-lp" class="w-full bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700 transition-colors">
+                                    Unstake LP Tokens
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Claim Rewards -->
+                        <div class="card-hover bg-gray-50 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold mb-4">Claim Rewards</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Yield Pool ID</label>
+                                    <input id="claim-pool-id" type="number" placeholder="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                                <div class="text-sm text-gray-600">
+                                    <p>Pending Rewards: <span id="pending-rewards">0.00</span></p>
+                                </div>
+                                <button id="claim-rewards" class="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                                    Claim Rewards
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Create Yield Pool -->
+                        <div class="card-hover bg-gray-50 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold mb-4">Create Yield Pool</h3>
+                            <div class="space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Token A</label>
+                                        <select id="yield-token-a" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                            <option value="USDC">USDC</option>
+                                            <option value="WMAS">WMAS</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Token B</label>
+                                        <select id="yield-token-b" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                            <option value="WMAS">WMAS</option>
+                                            <option value="USDC">USDC</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Reward Token Address</label>
+                                    <input id="reward-token" type="text" placeholder="AS..." class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Reward Rate (per period)</label>
+                                    <input id="reward-rate" type="number" placeholder="1.0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                </div>
+                                <button id="create-yield-pool" class="w-full bg-purple-600 text-white py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors">
+                                    Create Yield Pool
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analytics Tab -->
+                <div id="analytics-tab" class="tab-content hidden">
+                    <div class="space-y-8">
+                        <!-- Balance Charts -->
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div class="bg-gray-50 p-6 rounded-lg">
+                                <h3 class="text-lg font-semibold mb-4">Token Balances Over Time</h3>
+                                <div id="balance-chart" style="height: 300px;"></div>
+                            </div>
+                            <div class="bg-gray-50 p-6 rounded-lg">
+                                <h3 class="text-lg font-semibold mb-4">Price Chart</h3>
+                                <div id="price-chart" style="height: 300px;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Event Log -->
+                        <div class="bg-gray-50 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold mb-4">Recent Events</h3>
+                            <div class="bg-white rounded-lg p-4 max-h-64 overflow-y-auto">
+                                <ul id="event-log" class="space-y-2">
+                                    <li class="text-gray-500 text-sm">No events yet...</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="notification" class="fixed top-4 right-4 bg-white border-l-4 border-blue-500 rounded-lg shadow-lg p-4 max-w-sm transform translate-x-full transition-transform duration-300 z-50">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg id="notification-icon" class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                </svg>
+            </div>
+            <div class="ml-3">
+                <p id="notification-title" class="text-sm font-medium text-gray-900">Notification</p>
+                <p id="notification-message" class="text-sm text-gray-500">Message</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 flex items-center space-x-4">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-massa-600"></div>
+            <span class="text-lg font-medium">Processing transaction...</span>
+        </div>
+    </div>
+
+    <!-- Include the MassaSwap SDK -->
+    <script src="web3.js"></script>
+    
+    <!-- Frontend JavaScript -->
+    <script>
+        
+
+
+
+
+        // Global variables
+        let massaSwap = null;
+        let isConnected = false;
+        let balanceChart = null;
+        let priceChart = null;
+
+        // Configuration
+        const TOKEN_ADDRESSES = {
+            USDC: "AS1dJ8mrm2cVSdZVZLXo43wRx5FxywZ9BmxiUmXCy7Tx72XNbit8",
+            WMAS: "AS12XdqMFYx1Ghd5LRzMq9hw81hVgBAYX9zqMJVZeVyM9nRn4C2pt"
+        };
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeUI();
+            setupEventListeners();
+            initializeCharts();
+        });
+
+        // UI Initialization
+        function initializeUI() {
+            // Set up tab switching
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabContents = document.querySelectorAll('.tab-content');
+
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const tabName = button.dataset.tab;
+                    
+                    // Update button states
+                    tabButtons.forEach(btn => {
+                        btn.classList.remove('active', 'border-massa-500', 'text-massa-600');
+                        btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+                    });
+                    
+                    button.classList.add('active', 'border-massa-500', 'text-massa-600');
+                    button.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+                    
+                    // Update content visibility
+                    tabContents.forEach(content => {
+                        content.classList.add('hidden');
+                    });
+                    
+                    document.getElementById(`${tabName}-tab`).classList.remove('hidden');
+                });
+            });
+
+            // Set initial active tab
+            document.querySelector('.tab-button[data-tab="swap"]').classList.add('border-massa-500', 'text-massa-600');
+            document.querySelector('.tab-button[data-tab="swap"]').classList.remove('border-transparent', 'text-gray-500');
+        }
+
+        // Event Listeners
+        function setupEventListeners() {
+            // Connect wallet
+            document.getElementById('connect-wallet').addEventListener('click', connectWallet);
+
+            // Swap functionality
+            document.getElementById('swap-direction').addEventListener('click', swapTokenDirection);
+            document.getElementById('execute-swap').addEventListener('click', executeSwap);
+            document.getElementById('amount-in').addEventListener('input', calculateSwapOutput);
+
+            // Liquidity functionality
+            document.getElementById('add-liquidity').addEventListener('click', addLiquidity);
+            document.getElementById('remove-liquidity').addEventListener('click', removeLiquidity);
+            document.getElementById('create-pool').addEventListener('click', createPool);
+
+            // Advanced functionality
+            document.getElementById('create-dca').addEventListener('click', createDCAStrategy);
+            document.getElementById('create-order').addEventListener('click', createLimitOrder);
+            document.getElementById('start-autonomous').addEventListener('click', startAutonomousEngine);
+            document.getElementById('stop-autonomous').addEventListener('click', stopAutonomousEngine);
+
+            // Yield farming functionality
+            document.getElementById('stake-lp').addEventListener('click', stakeLPTokens);
+            document.getElementById('unstake-lp').addEventListener('click', unstakeLPTokens);
+            document.getElementById('claim-rewards').addEventListener('click', claimRewards);
+            document.getElementById('create-yield-pool').addEventListener('click', createYieldPool);
+
+            // Listen for MassaSwap events
+            document.addEventListener('massaswap-event', handleContractEvent);
+        }
+
+        // Wallet Connection
+        async function connectWallet() {
+            try {
+                showLoading(true);
+                
+                // Example account - in production, this would come from a wallet connection
+                const account = {
+                    address: "AU139TmwoP6w5mgUQrpF9s49VXeFGXmN1SiuX5HEtzcGmuJAoXFa",
+                    secretKey: "S124xpCaad7hPhvezhHp2sSxb56Dpi2oufcp2m2NtkdPjgxFXNon",
+                    publicKey: "P1zir4oncNbkuQFkZyU4TjfNzR5BotZzf4hGVE4pCNwCb6Z2Kjn",
+                };
+
+                massaSwap = new MassaSwapSDK(account);
+                await massaSwap.initialize();
+
+                isConnected = true;
+                updateConnectionStatus(true);
+                updateAccountInfo(account.address);
+                await updateBalances();
+
+                showNotification('Success', 'Wallet connected successfully!', 'success');
+            } catch (error) {
+                console.error('Failed to connect wallet:', error);
+                showNotification('Error', 'Failed to connect wallet: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Update UI functions
+        function updateConnectionStatus(connected) {
+            const statusElement = document.getElementById('connection-status');
+            const connectButton = document.getElementById('connect-wallet');
+            const accountInfo = document.getElementById('account-info');
+
+            if (connected) {
+                statusElement.innerHTML = '<div class="w-3 h-3 bg-green-400 rounded-full mr-2"></div><span class="text-sm">Connected</span>';
+                connectButton.textContent = 'Connected';
+                connectButton.disabled = true;
+                connectButton.classList.add('opacity-50', 'cursor-not-allowed');
+                accountInfo.classList.remove('hidden');
+            } else {
+                statusElement.innerHTML = '<div class="w-3 h-3 bg-red-400 rounded-full mr-2"></div><span class="text-sm">Disconnected</span>';
+                connectButton.textContent = 'Connect Wallet';
+                connectButton.disabled = false;
+                connectButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                accountInfo.classList.add('hidden');
+            }
+        }
+
+        function updateAccountInfo(address) {
+            document.getElementById('user-address').textContent = address;
+        }
+
+        async function updateBalances() {
+            if (!massaSwap || !isConnected) return;
+
+            try {
+                const balances = await massaSwap.getBalances();
+                document.getElementById('usdc-balance').textContent = balances.USDC.toFixed(2);
+                document.getElementById('wmas-balance').textContent = balances.WMAS.toFixed(2);
+                
+                // Update charts
+                updateBalanceChart(balances);
+            } catch (error) {
+                console.error('Failed to update balances:', error);
+            }
+        }
+
+        // Swap functionality
+        function swapTokenDirection() {
+            const tokenIn = document.getElementById('token-in');
+            const tokenOut = document.getElementById('token-out');
+            const amountIn = document.getElementById('amount-in');
+            const amountOut = document.getElementById('amount-out');
+
+            // Swap the token selections
+            const tempValue = tokenIn.value;
+            tokenIn.value = tokenOut.value;
+            tokenOut.value = tempValue;
+
+            // Clear amounts
+            amountIn.value = '';
+            amountOut.value = '';
+        }
+
+        function calculateSwapOutput() {
+            // This would calculate the expected output based on current pool reserves
+            // For now, we'll use a simple placeholder calculation
+            const amountIn = parseFloat(document.getElementById('amount-in').value) || 0;
+            const estimatedOutput = amountIn * 0.45; // Placeholder rate
+            document.getElementById('amount-out').value = estimatedOutput.toFixed(6);
+        }
+
+        async function executeSwap() {
+            if (!massaSwap || !isConnected) {
+                showNotification('Error', 'Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const tokenInSymbol = document.getElementById('token-in').value;
+                const tokenOutSymbol = document.getElementById('token-out').value;
+                const amountIn = document.getElementById('amount-in').value;
+                const slippage = document.getElementById('slippage').value;
+
+                if (!amountIn || parseFloat(amountIn) <= 0) {
+                    throw new Error('Please enter a valid amount');
+                }
+
+                const tokenInAddress = TOKEN_ADDRESSES[tokenInSymbol];
+                const tokenOutAddress = TOKEN_ADDRESSES[tokenOutSymbol];
+                const amountInUnits = massaSwap.utils.toContractUnits(amountIn);
+
+                await massaSwap.quickSwap(tokenInAddress, tokenOutAddress, amountInUnits, parseFloat(slippage));
+
+                showNotification('Success', 'Swap executed successfully!', 'success');
+                await updateBalances();
+            } catch (error) {
+                console.error('Swap failed:', error);
+                showNotification('Error', 'Swap failed: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Liquidity functionality
+        async function addLiquidity() {
+            if (!massaSwap || !isConnected) {
+                showNotification('Error', 'Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const amountA = document.getElementById('liquidity-amount-a').value;
+                const amountB = document.getElementById('liquidity-amount-b').value;
+
+                if (!amountA || !amountB || parseFloat(amountA) <= 0 || parseFloat(amountB) <= 0) {
+                    throw new Error('Please enter valid amounts for both tokens');
+                }
+
+                const amountAUnits = massaSwap.utils.toContractUnits(amountA);
+                const amountBUnits = massaSwap.utils.toContractUnits(amountB);
+
+                await massaSwap.dex.addLiquidity(
+                    TOKEN_ADDRESSES.USDC,
+                    TOKEN_ADDRESSES.WMAS,
+                    amountAUnits,
+                    amountBUnits
+                );
+
+                showNotification('Success', 'Liquidity added successfully!', 'success');
+                await updateBalances();
+            } catch (error) {
+                console.error('Add liquidity failed:', error);
+                showNotification('Error', 'Add liquidity failed: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function removeLiquidity() {
+            if (!massaSwap || !isConnected) {
+                showNotification('Error', 'Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const liquidityAmount = document.getElementById('remove-liquidity-amount').value;
+
+                if (!liquidityAmount || parseFloat(liquidityAmount) <= 0) {
+                    throw new Error('Please enter a valid liquidity amount');
+                }
+
+                const liquidityUnits = massaSwap.utils.toContractUnits(liquidityAmount);
+
+                await massaSwap.dex.removeLiquidity(
+                    TOKEN_ADDRESSES.USDC,
+                    TOKEN_ADDRESSES.WMAS,
+                    liquidityUnits
+                );
+
+                showNotification('Success', 'Liquidity removed successfully!', 'success');
+                await updateBalances();
+            } catch (error) {
+                console.error('Remove liquidity failed:', error);
+                showNotification('Error', 'Remove liquidity failed: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function createPool() {
+            if (!massaSwap || !isConnected) {
+                showNotification('Error', 'Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const usdcAmount = document.getElementById('pool-usdc-amount').value;
+                const wmasAmount = document.getElementById('pool-wmas-amount').value;
+
+                if (!usdcAmount || !wmasAmount || parseFloat(usdcAmount) <= 0 || parseFloat(wmasAmount) <= 0) {
+                    throw new Error('Please enter valid amounts for both tokens');
+                }
+
+                const usdcUnits = massaSwap.utils.toContractUnits(usdcAmount);
+                const wmasUnits = massaSwap.utils.toContractUnits(wmasAmount);
+
+                await massaSwap.dex.createPool(
+                    TOKEN_ADDRESSES.USDC,
+                    TOKEN_ADDRESSES.WMAS,
+                    usdcUnits,
+                    wmasUnits
+                );
+
+                showNotification('Success', 'Pool created successfully!', 'success');
+                await updateBalances();
+            } catch (error) {
+                console.error('Create pool failed:', error);
+                showNotification('Error', 'Create pool failed: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Advanced DeFi functionality
+        async function createDCAStrategy() {
+            if (!massaSwap || !isConnected) {
+                showNotification('Error', 'Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const tokenInSymbol = document.getElementById('dca-token-in').value;
+                const tokenOutSymbol = document.getElementById('dca-token-out').value;
+                const amount = document.getElementById('dca-amount').value;
+                const interval = document.getElementById('dca-interval').value;
+                const total = document.getElementById('dca-total').value;
+
+                if (!amount || !interval || !total) {
+                    throw new Error('Please fill in all DCA strategy fields');
+                }
+
+                const tokenInAddress = TOKEN_ADDRESSES[tokenInSymbol];
+                const tokenOutAddress = TOKEN_ADDRESSES[tokenOutSymbol];
+                const amountUnits = massaSwap.utils.toContractUnits(amount);
+
+                await massaSwap.advanced.createDCAStrategy(
+                    tokenInAddress,
+                    tokenOutAddress,
+                    amountUnits,
+                    parseInt(interval),
+                    parseInt(total)
+                );
+
+                showNotification('Success', 'DCA strategy created successfully!', 'success');
+            } catch (error) {
+                console.error('Create DCA strategy failed:', error);
+                showNotification('Error', 'Create DCA strategy failed: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function createLimitOrder() {
+            if (!massaSwap || !isConnected) {
+                showNotification('Error', 'Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const tokenInSymbol = document.getElementById('order-token-in').value;
+                const tokenOutSymbol = document.getElementById('order-token-out').value;
+                const amountIn = document.getElementById('order-amount-in').value;
+                const minAmountOut = document.getElementById('order-min-out').value;
+                const expiryHours = document.getElementById('order-expiry').value;
+                const orderType = document.getElementById('order-type').value;
+
+                if (!amountIn || !minAmountOut || !expiryHours) {
+                    throw new Error('Please fill in all limit order fields');
+                }
+
+                const tokenInAddress = TOKEN_ADDRESSES[tokenInSymbol];
+                const tokenOutAddress = TOKEN_ADDRESSES[tokenOutSymbol];
+                const amountInUnits = massaSwap.utils.toContractUnits(amountIn);
+                const minAmountOutUnits = massaSwap.utils.toContractUnits(minAmountOut);
+                const expiry = massaSwap.utils.getExpiryTimestamp(parseInt(expiryHours));
+
+                await massaSwap.advanced.createLimitOrder(
+                    tokenInAddress,
+                    tokenOutAddress,
+                    amountInUnits,
+                    minAmountOutUnits,
+                    expiry,
+                    orderType
+                );
+
+                showNotification('Success', 'Limit order created successfully!', 'success');
+            } catch (error) {
+                console.error('Create limit order failed:', error);
+                showNotification('Error', 'Create limit order failed: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function startAutonomousEngine() {
+            if (!massaSwap || !isConnected) {
+                showNotification('Error', 'Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                await massaSwap.advanced.startAutonomousEngine();
+
+                const statusElement = document.getElementById('autonomous-status');
+                statusElement.innerHTML = '<div class="w-3 h-3 bg-green-400 rounded-full mr-2"></div><span class="text-sm">Running</span>';
+
+                showNotification('Success', 'Autonomous engine started!', 'success');
+            } catch (error) {
+                console.error('Start autonomous engine failed:', error);
+                showNotification('Error', 'Start autonomous engine failed: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function stopAutonomousEngine() {
+            if (!massaSwap || !isConnected) {
+                showNotification('Error', 'Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                await massaSwap.advanced.stopAutonomousEngine();
+
+                const statusElement = document.getElementById('autonomous-status');
+                statusElement.innerHTML = '<div class="w-3 h-3 bg-gray-400 rounded-full mr-2"></div><span class="text-sm">Stopped</span>';
+
+                showNotification('Success', 'Autonomous engine stopped!', 'success');
+            } catch (error) {
+                console.error('Stop autonomous engine failed:', error);
+                showNotification('Error', 'Stop autonomous engine failed: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Yield farming functionality
+        async function stakeLPTokens() {
+            if (!massaSwap || !isConnected) {
+                showNotification('Error', 'Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const poolId = document.getElementById('stake-pool-id').value;
+                const amount = document.getElementById('stake-amount').value;
+
+                if (!poolId || !amount) {
+                    throw new Error('Please fill in all staking fields');
+                }
+
+                const amountUnits = massaSwap.utils.toContractUnits(amount);
+
+                await massaSwap.advanced.stakeLP(parseInt(poolId), amountUnits);
+
+                showNotification('Success', 'LP tokens staked successfully!', 'success');
+            } catch (error) {
+                console.error('Stake LP tokens failed:', error);
+                showNotification('Error', 'Stake LP tokens failed: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function unstakeLPTokens() {
+            if (!massaSwap || !isConnected) {
+                showNotification('Error', 'Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const poolId = document.getElementById('unstake-pool-id').value;
+                const amount = document.getElementById('unstake-amount').value;
+
+                if (!poolId || !amount) {
+                    throw new Error('Please fill in all unstaking fields');
+                }
+
+                const amountUnits = massaSwap.utils.toContractUnits(amount);
+
+                await massaSwap.advanced.unstakeLP(parseInt(poolId), amountUnits);
+
+                showNotification('Success', 'LP tokens unstaked successfully!', 'success');
+            } catch (error) {
+                console.error('Unstake LP tokens failed:', error);
+                showNotification('Error', 'Unstake LP tokens failed: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function claimRewards() {
+            if (!massaSwap || !isConnected) {
+                showNotification('Error', 'Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const poolId = document.getElementById('claim-pool-id').value;
+
+                if (!poolId) {
+                    throw new Error('Please enter a pool ID');
+                }
+
+                await massaSwap.advanced.claimRewards(parseInt(poolId));
+
+                showNotification('Success', 'Rewards claimed successfully!', 'success');
+            } catch (error) {
+                console.error('Claim rewards failed:', error);
+                showNotification('Error', 'Claim rewards failed: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function createYieldPool() {
+            if (!massaSwap || !isConnected) {
+                showNotification('Error', 'Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showLoading(true);
+
+                const tokenASymbol = document.getElementById('yield-token-a').value;
+                const tokenBSymbol = document.getElementById('yield-token-b').value;
+                const rewardToken = document.getElementById('reward-token').value;
+                const rewardRate = document.getElementById('reward-rate').value;
+
+                if (!rewardToken || !rewardRate) {
+                    throw new Error('Please fill in all yield pool fields');
+                }
+
+                const tokenAAddress = TOKEN_ADDRESSES[tokenASymbol];
+                const tokenBAddress = TOKEN_ADDRESSES[tokenBSymbol];
+                const rewardRateUnits = massaSwap.utils.toContractUnits(rewardRate);
+
+                await massaSwap.advanced.createYieldPool(
+                    tokenAAddress,
+                    tokenBAddress,
+                    rewardToken,
+                    rewardRateUnits
+                );
+
+                showNotification('Success', 'Yield pool created successfully!', 'success');
+            } catch (error) {
+                console.error('Create yield pool failed:', error);
+                showNotification('Error', 'Create yield pool failed: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Chart functionality
+        function initializeCharts() {
+            // Initialize balance chart
+            const balanceData = [{
+                y: [0],
+                x: [new Date().toISOString()],
+                name: "USDC Balance",
+                type: 'scatter',
+                line: { color: '#3b82f6' }
+            }, {
+                y: [0],
+                x: [new Date().toISOString()],
+                name: "WMAS Balance",
+                type: 'scatter',
+                line: { color: '#10b981' }
+            }];
+
+            const balanceLayout = {
+                plot_bgcolor: "#f9fafb",
+                paper_bgcolor: "#f9fafb",
+                font: { size: 12, color: '#374151' },
+                xaxis: { automargin: true },
+                yaxis: { title: 'Balance' },
+                margin: { t: 20, r: 20, b: 40, l: 60 }
+            };
+
+            Plotly.newPlot('balance-chart', balanceData, balanceLayout, { responsive: true });
+
+            // Initialize price chart
+            const priceData = [{
+                y: [1],
+                x: [new Date().toISOString()],
+                name: "USDC/WMAS Price",
+                type: 'scatter',
+                line: { color: '#8b5cf6' }
+            }];
+
+            const priceLayout = {
+                plot_bgcolor: "#f9fafb",
+                paper_bgcolor: "#f9fafb",
+                font: { size: 12, color: '#374151' },
+                xaxis: { automargin: true },
+                yaxis: { title: 'Price' },
+                margin: { t: 20, r: 20, b: 40, l: 60 }
+            };
+
+            Plotly.newPlot('price-chart', priceData, priceLayout, { responsive: true });
+        }
+
+        function updateBalanceChart(balances) {
+            const timestamp = new Date().toISOString();
+            
+            Plotly.extendTraces('balance-chart', {
+                y: [[balances.USDC], [balances.WMAS]],
+                x: [[timestamp], [timestamp]]
+            }, [0, 1], 20);
+        }
+
+        // Event handling
+        function handleContractEvent(event) {
+            const eventData = event.detail.data;
+            const timestamp = event.detail.timestamp;
+            
+            // Add to event log
+            const eventLog = document.getElementById('event-log');
+            const listItem = document.createElement('li');
+            listItem.className = 'text-sm border-b border-gray-200 pb-2';
+            listItem.innerHTML = `
+                <div class="flex justify-between">
+                    <span class="font-medium">${eventData}</span>
+                    <span class="text-gray-500 text-xs">${new Date(timestamp).toLocaleTimeString()}</span>
+                </div>
+            `;
+            
+            if (eventLog.firstChild.textContent.includes('No events yet')) {
+                eventLog.innerHTML = '';
+            }
+            
+            eventLog.insertBefore(listItem, eventLog.firstChild);
+            
+            // Keep only last 10 events
+            while (eventLog.children.length > 10) {
+                eventLog.removeChild(eventLog.lastChild);
+            }
+            
+            // Update balances after events
+            if (isConnected) {
+                setTimeout(updateBalances, 1000);
+            }
+        }
+
+        // Utility functions
+        function showLoading(show) {
+            const overlay = document.getElementById('loading-overlay');
+            if (show) {
+                overlay.classList.remove('hidden');
+            } else {
+                overlay.classList.add('hidden');
+            }
+        }
+
+        function showNotification(title, message, type = 'info') {
+            const notification = document.getElementById('notification');
+            const titleElement = document.getElementById('notification-title');
+            const messageElement = document.getElementById('notification-message');
+            const iconElement = document.getElementById('notification-icon');
+
+            titleElement.textContent = title;
+            messageElement.textContent = message;
+
+            // Update colors based on type
+            notification.className = 'fixed top-4 right-4 bg-white border-l-4 rounded-lg shadow-lg p-4 max-w-sm transform transition-transform duration-300 z-50';
+            
+            if (type === 'success') {
+                notification.classList.add('border-green-500');
+                iconElement.className = 'h-5 w-5 text-green-400';
+            } else if (type === 'error') {
+                notification.classList.add('border-red-500');
+                iconElement.className = 'h-5 w-5 text-red-400';
+            } else {
+                notification.classList.add('border-blue-500');
+                iconElement.className = 'h-5 w-5 text-blue-400';
+            }
+
+            // Show notification
+            notification.classList.remove('translate-x-full');
+
+            // Hide after 5 seconds
+            setTimeout(() => {
+                notification.classList.add('translate-x-full');
+            }, 5000);
+        }
+
+        // Auto-refresh balances every 30 seconds
+        setInterval(() => {
+            if (isConnected) {
+                updateBalances();
+            }
+        }, 30000);
+ 
+    </script>
+</body>
+</html>
+
