@@ -1,0 +1,27 @@
+{
+  "name": "massa-prediction-game",
+  "version": "1.0.0",
+  "description": "A fully on-chain prediction battle game for the Massa blockchain.",
+  "main": "assembly/contracts/game.ts",
+  "scripts": {
+    "build": "asc assembly/contracts/game.ts -b build/game.wasm -t build/game.wat",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@massalabs/massa-as-sdk": "^1.0.0",
+    "@massalabs/as-types": "^1.0.0"
+  },
+  "devDependencies": {
+    "jest": "^27.0.0",
+    "ts-jest": "^27.0.0",
+    "typescript": "^4.0.0"
+  },
+  "keywords": [
+    "massa",
+    "prediction",
+    "game",
+    "smart-contract"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}

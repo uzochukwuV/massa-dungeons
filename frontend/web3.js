@@ -1,24 +1,20 @@
 
 const CONFIG = {
     // Update these addresses with your deployed contract addresses
-    MASSASWAP_CORE_ADDRESS: "AS1xS7YryYp3NxXqv9KZspi9BtZnLBTtQY5GBGcSkNWu9mY8a7jg",
-    ADVANCED_DEFI_ADDRESS: "AS12MWD7ntspmLjmMZRkQpyEAcFWYHQJiiRxnMJLWv7Q6MYzDoXNz",
-    USDC_ADDRESS: "AS1dJ8mrm2cVSdZVZLXo43wRx5FxywZ9BmxiUmXCy7Tx72XNbit8",
-    WMAS_ADDRESS: "AS12XdqMFYx1Ghd5LRzMq9hw81hVgBAYX9zqMJVZeVyM9nRn4C2pt",
+    MASSASWAP_CORE_ADDRESS: "AS12kpsuk6RNAt5ckZuYNpkzvZz91sknHkg9tpu6CB8y55WV3Jwxy", // MassaSwap core contract address
+    ADVANCED_DEFI_ADDRESS: "AS1FFYtitnDmBACApz11Xex24AfHXFMuitnau9cpe8bh6BN1HNPy",
+    USDC_ADDRESS: "AS12GKSLndMdbpiFQNbUhcWt2CZusmL4sMTh21zpymnr6jjfm4xZj", // USDC token address
+    WMAS_ADDRESS: "AS12p4qNq9ZU8XZKDomM51stC9G1qz6faaAFX4jYfpbbr4gJULL9G",// Wrapped MAS token address
     
     PROVIDERS: [
         {
-            url: "http://149.202.84.7:33035",
+            url: "https://buildnet.massa.net/api/v2",
             type: window.massa.ProviderType.PUBLIC,
         },
-        {
-            url: "http://149.202.84.7:33034",
-            type: window.massa.ProviderType.PRIVATE,
-        },
-        {
-            url: "ws://149.202.84.7:33036",
-            type: window.massa.ProviderType.WS,
-        }
+         {
+                        url: "https://mainnet.massa.net/api/v2",
+                        type: window.massa.ProviderType.PRIVATE,
+                    },
     ],
     
     // Gas limits for different operations
@@ -58,6 +54,8 @@ class MassaSwapClient {
                 true,
                 baseAccount
             );
+
+           
             
             const status = await client.publicApi().getNodeStatus();
             
@@ -70,6 +68,31 @@ class MassaSwapClient {
             };
             
             web3Client = client;
+             massa.ClientFactory.createCustomClient(
+                    CONFIG.PROVIDERS,
+                    true,
+                    baseAccount
+                ).then((client) => {
+                    client.publicApi()
+                    .getNodeStatus().then((status) => {
+                        console.log('Node status:', status);
+                        const eventsFilter = {
+                            start: status.last_slot,
+                            end: null,
+                            original_caller_address: null,
+                            original_operation_id: null,
+                            emitter_address: null,
+                        };
+                        web3Client = client;
+                        const eventPoller = window.massa.EventPoller.startEventsPolling(
+                            eventsFilter,
+                            1000,
+                            web3Client
+                        );
+                        eventPoller.on(window.massa.ON_MASSA_EVENT_DATA, onEventData);
+                        eventPoller.on(window.massa.ON_MASSA_EVENT_ERROR, onEventDataError);
+                    });
+                });
             
             // Start event polling
             eventPoller = window.massa.EventPoller.startEventsPolling(
@@ -138,7 +161,7 @@ class MassaSwapDEX {
 
             const result = await web3Client.smartContracts().callSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     maxGas: CONFIG.GAS_LIMITS.CREATE_POOL,
                     coins: massa.fromMAS("1"),
                     targetAddress: CONFIG.MASSASWAP_CORE_ADDRESS,
@@ -169,7 +192,7 @@ class MassaSwapDEX {
 
             const result = await web3Client.smartContracts().callSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     maxGas: CONFIG.GAS_LIMITS.ADD_LIQUIDITY,
                     coins: massa.fromMAS("1"),
                     targetAddress: CONFIG.MASSASWAP_CORE_ADDRESS,
@@ -199,7 +222,7 @@ class MassaSwapDEX {
 
             const result = await web3Client.smartContracts().callSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     maxGas: CONFIG.GAS_LIMITS.REMOVE_LIQUIDITY,
                     coins: massa.fromMAS("1"),
                     targetAddress: CONFIG.MASSASWAP_CORE_ADDRESS,
@@ -230,7 +253,7 @@ class MassaSwapDEX {
 
             const result = await web3Client.smartContracts().callSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     maxGas: CONFIG.GAS_LIMITS.SWAP,
                     coins: massa.fromMAS("1"),
                     targetAddress: CONFIG.MASSASWAP_CORE_ADDRESS,
@@ -258,7 +281,7 @@ class MassaSwapDEX {
 
             const result = await web3Client.smartContracts().readSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     callerAddress: baseAccount.address,
                     maxGas: CONFIG.GAS_LIMITS.READ_OPERATION,
                     coins: massa.fromMAS("1"),
@@ -313,7 +336,7 @@ class MassaSwapAdvanced {
 
             const result = await web3Client.smartContracts().callSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     maxGas: CONFIG.GAS_LIMITS.DCA_STRATEGY,
                     coins: massa.fromMAS("1"),
                     targetAddress: CONFIG.ADVANCED_DEFI_ADDRESS,
@@ -346,7 +369,7 @@ class MassaSwapAdvanced {
 
             const result = await web3Client.smartContracts().callSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     maxGas: CONFIG.GAS_LIMITS.LIMIT_ORDER,
                     coins: massa.fromMAS("1"),
                     targetAddress: CONFIG.ADVANCED_DEFI_ADDRESS,
@@ -377,7 +400,7 @@ class MassaSwapAdvanced {
 
             const result = await web3Client.smartContracts().callSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     maxGas: CONFIG.GAS_LIMITS.YIELD_FARMING,
                     coins: massa.fromMAS("1"),
                     targetAddress: CONFIG.ADVANCED_DEFI_ADDRESS,
@@ -406,7 +429,7 @@ class MassaSwapAdvanced {
 
             const result = await web3Client.smartContracts().callSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     maxGas: CONFIG.GAS_LIMITS.YIELD_FARMING,
                     coins: massa.fromMAS("1"),
                     targetAddress: CONFIG.ADVANCED_DEFI_ADDRESS,
@@ -435,7 +458,7 @@ class MassaSwapAdvanced {
 
             const result = await web3Client.smartContracts().callSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     maxGas: CONFIG.GAS_LIMITS.YIELD_FARMING,
                     coins: massa.fromMAS("1"),
                     targetAddress: CONFIG.ADVANCED_DEFI_ADDRESS,
@@ -463,7 +486,7 @@ class MassaSwapAdvanced {
 
             const result = await web3Client.smartContracts().callSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     maxGas: CONFIG.GAS_LIMITS.YIELD_FARMING,
                     coins: massa.fromMAS("1"),
                     targetAddress: CONFIG.ADVANCED_DEFI_ADDRESS,
@@ -490,7 +513,7 @@ class MassaSwapAdvanced {
 
             const result = await web3Client.smartContracts().callSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     maxGas: CONFIG.GAS_LIMITS.AUTONOMOUS_ENGINE,
                     coins: massa.fromMAS("1"),
                     targetAddress: CONFIG.ADVANCED_DEFI_ADDRESS,
@@ -517,7 +540,7 @@ class MassaSwapAdvanced {
 
             const result = await web3Client.smartContracts().callSmartContract(
                 {
-                    fee: 0n,
+                    fee: 100000000n,
                     maxGas: CONFIG.GAS_LIMITS.AUTONOMOUS_ENGINE,
                     coins: massa.fromMAS("1"),
                     targetAddress: CONFIG.ADVANCED_DEFI_ADDRESS,
@@ -681,6 +704,8 @@ async function exampleUsage() {
         console.error("Error in example usage:", error);
     }
 }
+
+// exampleUsage()
 
 // Event listeners for UI integration
 document.addEventListener('massaswap-event', (event) => {

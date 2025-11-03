@@ -4,12 +4,12 @@
     "description": "Smart contracts used to demo to blue yard",
     "scripts": {
         "test": "asp --summary",
-        "buidl": "ts-node src/compile.ts",
+        "buidl": "node --loader ts-node/esm src/compile.ts",
         "build": "npx massa-as-compile",
         "build:bot": "asc assembly/contracts/bot.ts -o build/bot.wasm",
         "build:bot_2": "asc assembly/contracts/bot_2.ts -o build/bot_2.wasm",
         "build:price_variation": "asc assembly/contracts/price_variation.ts -o build/price_variation.wasm",
-        "deploy": "ts-node src/deploy.ts",
+        "deploy": "node --loader ts-node/esm src/deploy.ts",
         "prettier": "prettier assembly//**/*.ts --check && as-prettier --check assembly",
         "prettier:fix": "prettier assembly//**/*.ts --write && as-prettier --write assembly",
         "lint": "eslint .",
@@ -40,9 +40,9 @@
         "eslint": "^8.27.0",
         "eslint-plugin-json": "^3.1.0",
         "prettier": "^2.8.1",
-        "ts-node": "^10.9.1",
+        "ts-node": "^10.9.2",
         "tslib": "^2.4.0",
-        "typescript": "^4.8.4"
+        "typescript": "^4.9.5"
     },
     "type": "module"
 }

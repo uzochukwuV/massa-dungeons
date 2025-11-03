@@ -31,11 +31,8 @@ function sortFiles(files: Array<string>): Array<string> {
 
 export async function compileAll(): Promise<boolean> {
     const files: string[] = sortFiles([
-        "assembly/contracts/ERC20.ts",
-        "assembly/contracts/Pair.ts",
-        "assembly/contracts/Quoter.ts",
-        "assembly/contracts/Router.ts",
-        "assembly/contracts/WMAS.ts",
+        "assembly/contracts/uni_massa.ts",
+        "assembly/contracts/uni_massa_dca.ts",
     ]);
 
     const res = await Promise.all(
@@ -48,21 +45,21 @@ export async function compileAll(): Promise<boolean> {
         ),
     );
 
-    const factoryFile = "assembly/contracts/Factory.ts";
-    const res2 = await compile([
-        "-o",
-        join("build", basename(factoryFile.replace(".ts", ".wasm"))),
-        factoryFile,
-    ]);
+    // const factoryFile = "assembly/contracts/Factory.ts";
+    // const res2 = await compile([
+    //     "-o",
+    //     join("build", basename(factoryFile.replace(".ts", ".wasm"))),
+    //     factoryFile,
+    // ]);
 
-    const mainFile = "assembly/contracts/main.ts";
-    const res3 = await compile([
-        "-o",
-        join("build", basename(mainFile.replace(".ts", ".wasm"))),
-        mainFile,
-    ]);
+    // const mainFile = "assembly/contracts/main.ts";
+    // const res3 = await compile([
+    //     "-o",
+    //     join("build", basename(mainFile.replace(".ts", ".wasm"))),
+    //     mainFile,
+    // ]);
 
-    res.concat(res2, res3);
+    // res.concat(res2, res3);
 
     return res.every((isOk) => isOk);
 }

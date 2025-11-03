@@ -6,12 +6,15 @@ import {
     Storage,
 } from "@massalabs/massa-as-sdk";
 import { Args, Result, stringToBytes } from "@massalabs/as-types";
-import { IERC20 } from "../interfaces";
-
+import { IERC20 } from "./interfaces/IERC20";
+import { u256 } from 'as-bignum/assembly';
 // Core constants
 export const ONE_UNIT = 10 ** 9;
 export const FEE_RATE = 30; // 0.3% base fee
 export const TREASURY_ADDRESS = new Address("AS1dJ8mrm2cVSdZVZLXo43wRx5FxywZ9BmxiUmXCy7Tx72XNbit8");
+
+
+
 
 // Pool structure
 export class Pool {
@@ -73,67 +76,6 @@ export class Pool {
     }
 }
 
-// Order structure for limit orders
-export class LimitOrder {
-    id: u64;
-    user: Address;
-    tokenIn: Address;
-    tokenOut: Address;
-    amountIn: u64;
-    minAmountOut: u64;
-    expiry: u64;
-    isActive: bool;
-    orderType: string; // "buy" or "sell"
-
-    constructor(
-        id: u64,
-        user: Address,
-        tokenIn: Address,
-        tokenOut: Address,
-        amountIn: u64,
-        minAmountOut: u64,
-        expiry: u64,
-        orderType: string
-    ) {
-        this.id = id;
-        this.user = user;
-        this.tokenIn = tokenIn;
-        this.tokenOut = tokenOut;
-        this.amountIn = amountIn;
-        this.minAmountOut = minAmountOut;
-        this.expiry = expiry;
-        this.isActive = true;
-        this.orderType = orderType;
-    }
-
-    serialize(): StaticArray<u8> {
-        const args = new Args();
-        args.add(this.id);
-        args.add(this.user.toString());
-        args.add(this.tokenIn.toString());
-        args.add(this.tokenOut.toString());
-        args.add(this.amountIn);
-        args.add(this.minAmountOut);
-        args.add(this.expiry);
-        args.add(this.isActive);
-        args.add(this.orderType);
-        return args.serialize();
-    }
-
-    static deserialize(data: StaticArray<u8>): LimitOrder {
-        const args = new Args(data);
-        return new LimitOrder(
-            args.nextU64().unwrap(),
-            new Address(args.nextString().unwrap()),
-            new Address(args.nextString().unwrap()),
-            new Address(args.nextString().unwrap()),
-            args.nextU64().unwrap(),
-            args.nextU64().unwrap(),
-            args.nextU64().unwrap(),
-            args.nextString().unwrap()
-        );
-    }
-}
 
 // Utility functions
 export function callNextSlot(at: Address, function_name: string, gas: u64): void {
@@ -313,11 +255,11 @@ export function constructor(_: StaticArray<u8>): void {
 }
 
 export function createPool(args: StaticArray<u8>): void {
-    const arguments = new Args(args);
-    const tokenA = new Address(arguments.nextString().unwrap());
-    const tokenB = new Address(arguments.nextString().unwrap());
-    const amountA = arguments.nextU64().unwrap();
-    const amountB = arguments.nextU64().unwrap();
+    const argument= new Args(args);
+    const tokenA = new Address(argument.nextString().unwrap());
+    const tokenB = new Address(argument.nextString().unwrap());
+    const amountA = argument.nextU64().unwrap();
+    const amountB = argument.nextU64().unwrap();
     
     const caller = Context.caller();
     const poolKey = getPoolKey(tokenA, tokenB);
@@ -331,9 +273,16 @@ export function createPool(args: StaticArray<u8>): void {
     // Transfer tokens from user
     const tokenAContract = new IERC20(tokenA);
     const tokenBContract = new IERC20(tokenB);
+
+
+    if (tokenAContract.allowance(caller, Context.callee()).toU64() < amountA ||
+        tokenBContract.allowance(caller, Context.callee()).toU64() < amountB) {
+        generateEvent("MassaSwap: Token A transfer failed");
+        return;
+    }
     
-    tokenAContract.transferFrom(caller, Context.callee(), amountA);
-    tokenBContract.transferFrom(caller, Context.callee(), amountB);
+    tokenAContract.transferFrom(caller, Context.callee(), u256.fromU64(amountA));
+    tokenBContract.transferFrom(caller, Context.callee(),  u256.fromU64(amountB));
     
     // Calculate initial liquidity
     const liquidity = sqrt(amountA * amountB);
@@ -357,11 +306,11 @@ export function createPool(args: StaticArray<u8>): void {
 }
 
 export function addLiquidity(args: StaticArray<u8>): void {
-    const arguments = new Args(args);
-    const tokenA = new Address(arguments.nextString().unwrap());
-    const tokenB = new Address(arguments.nextString().unwrap());
-    const amountA = arguments.nextU64().unwrap();
-    const amountB = arguments.nextU64().unwrap();
+    const argument = new Args(args);
+    const tokenA = new Address(argument.nextString().unwrap());
+    const tokenB = new Address(argument.nextString().unwrap());
+    const amountA = argument.nextU64().unwrap();
+    const amountB = argument.nextU64().unwrap();
     
     const caller = Context.caller();
     const pool = getPool(tokenA, tokenB);
@@ -387,9 +336,15 @@ export function addLiquidity(args: StaticArray<u8>): void {
     // Transfer tokens
     const tokenAContract = new IERC20(tokenA);
     const tokenBContract = new IERC20(tokenB);
+
+    if (tokenAContract.allowance(caller, Context.callee()).toU64() < finalAmountA ||
+        tokenBContract.allowance(caller, Context.callee()).toU64() < finalAmountB) {
+        generateEvent("MassaSwap: Token transfer failed");
+        return;
+    }
     
-    tokenAContract.transferFrom(caller, Context.callee(), finalAmountA);
-    tokenBContract.transferFrom(caller, Context.callee(), finalAmountB);
+    tokenAContract.transferFrom(caller, Context.callee(),  u256.fromU64(finalAmountA));
+    tokenBContract.transferFrom(caller, Context.callee(),  u256.fromU64(finalAmountB));
     
     // Calculate liquidity to mint
     const liquidity = (finalAmountA * pool.totalSupply) / pool.reserveA;
@@ -411,10 +366,10 @@ export function addLiquidity(args: StaticArray<u8>): void {
 }
 
 export function removeLiquidity(args: StaticArray<u8>): void {
-    const arguments = new Args(args);
-    const tokenA = new Address(arguments.nextString().unwrap());
-    const tokenB = new Address(arguments.nextString().unwrap());
-    const liquidity = arguments.nextU64().unwrap();
+    const argument = new Args(args);
+    const tokenA = new Address(argument.nextString().unwrap());
+    const tokenB = new Address(argument.nextString().unwrap());
+    const liquidity = argument.nextU64().unwrap();
     
     const caller = Context.caller();
     const pool = getPool(tokenA, tokenB);
@@ -450,8 +405,8 @@ export function removeLiquidity(args: StaticArray<u8>): void {
     const tokenAContract = new IERC20(tokenA);
     const tokenBContract = new IERC20(tokenB);
     
-    tokenAContract.transfer(caller, amountA);
-    tokenBContract.transfer(caller, amountB);
+    tokenAContract.transfer(caller, u256.fromU64(amountA));
+    tokenBContract.transfer(caller, u256.fromU64(amountB));
     
     updatePrice(tokenA, tokenB);
     
@@ -459,11 +414,11 @@ export function removeLiquidity(args: StaticArray<u8>): void {
 }
 
 export function swap(args: StaticArray<u8>): void {
-    const arguments = new Args(args);
-    const tokenIn = new Address(arguments.nextString().unwrap());
-    const tokenOut = new Address(arguments.nextString().unwrap());
-    const amountIn = arguments.nextU64().unwrap();
-    const minAmountOut = arguments.nextU64().unwrap();
+    const argument = new Args(args);
+    const tokenIn = new Address(argument.nextString().unwrap());
+    const tokenOut = new Address(argument.nextString().unwrap());
+    const amountIn = argument.nextU64().unwrap();
+    const minAmountOut = argument.nextU64().unwrap();
     
     const caller = Context.caller();
     const pool = getPool(tokenIn, tokenOut);
@@ -489,9 +444,13 @@ export function swap(args: StaticArray<u8>): void {
     // Transfer tokens
     const tokenInContract = new IERC20(tokenIn);
     const tokenOutContract = new IERC20(tokenOut);
+    if (tokenInContract.allowance(caller, Context.callee()).toU64() < amountIn ){
+        generateEvent("MassaSwap: Token transfer failed");
+        return;
+    }
     
-    tokenInContract.transferFrom(caller, Context.callee(), amountIn);
-    tokenOutContract.transfer(caller, amountOut);
+    tokenInContract.transferFrom(caller, Context.callee(),  u256.fromU64(amountIn));
+    tokenOutContract.transfer(caller, u256.fromU64(amountOut));
     
     // Update pool reserves
     if (tokenInIsA) {
