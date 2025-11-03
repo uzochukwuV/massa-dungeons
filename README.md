@@ -1,19 +1,12 @@
-# Demo of a trading bot
+# Massa Prediction Game
 
-This demo was originally made for a [presentation with BlueYard](https://www.youtube.com/watch?v=gliOv6ICWRg) where you can see a full live code of this project.
+## Overview
 
-This project regroup 2 trading bots and a html interface.
-The first trading bot is a very simple that buy/sell when a certain price is reached.
-The second trading bot is a bot that calculate a RSI and buy/sell using this indicator.
+The Massa Prediction Game is an on-chain game built on the Massa blockchain that allows players to place bets on various outcomes. The game features a dynamic betting system, player interactions, and settlement logic to determine winners and distribute payouts.
 
-This project is a great example of a fully-working project with SC side (using autonomous SC) and the 
-interface side.
-You can use it as a starting point but be careful there is a lot of security problems in it as it's a demo project.
+## Features
 
-You will find the smart contract side under `smart-contracts/` where you can build and deploy the contracts yourself.
-
-The interface is located in `interface/` and is linked to already deployed smart contracts on the buildnet.
-
-This project use the pools provided by Dusa you can visualize the one used on this project [here](https://trading.dusa.io/pools/AS12XdqMFYx1Ghd5LRzMq9hw81hVgBAYX9zqMJVZeVyM9nRn4C2pt/AS1dJ8mrm2cVSdZVZLXo43wRx5FxywZ9BmxiUmXCy7Tx72XNbit8/100)
-
-If you need any help on this example feel free to open an issue or ask on our discord.
+- **Betting Mechanics**: Players can place bets on different predictions and compete against each other.
+- **Game Rounds**: The game is structured into rounds, allowing for multiple betting opportunities.
+- **Event Notifications**: Significant actions in the game emit events to notify external listeners.
+- **Treasury Management**: A dedicated treasury contract manages funds, ensuring secure payouts and balance maintenance.
