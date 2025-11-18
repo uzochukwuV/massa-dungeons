@@ -3196,6 +3196,301 @@ export function advanceBattleBot(_: StaticArray<u8>): void {
   }
 }
 
+// ============================================================================
+// AUTONOMOUS EXECUTION - TOURNAMENT BOT (Auto-manage tournaments)
+// ============================================================================
+
+/**
+ * Start the tournament bot for autonomous tournament management
+ * Args: maxIterations (u64) - maximum cycles to run
+ */
+export function startTournamentBot(args: StaticArray<u8>): void {
+  onlyRole(ADMIN_ROLE);
+  const ar = new Args(args);
+  let maxIterations: u64 = 500;
+  const maxIter = ar.nextU64();
+  if (!maxIter.isErr()) {
+    maxIterations = maxIter.unwrap();
+  }
+
+  generateEvent('TournamentBot:Starting|maxIterations=' + maxIterations.toString());
+
+  setBool(TOURNAMENT_BOT_ENABLED_KEY, true);
+  setCounter(TOURNAMENT_BOT_COUNTER_KEY, 0);
+  setCounter(TOURNAMENT_BOT_MAX_ITERATIONS, maxIterations);
+  setCounter(TOURNAMENT_BOT_TOTAL_PROCESSED, 0);
+
+  generateEvent('TournamentBot:Started|maxIterations=' + maxIterations.toString());
+
+  advanceTournamentBot(new Args().serialize());
+}
+
+/**
+ * Stop the tournament bot
+ */
+export function stopTournamentBot(_: StaticArray<u8>): void {
+  onlyRole(ADMIN_ROLE);
+
+  const botEnabled = getBool(TOURNAMENT_BOT_ENABLED_KEY);
+  if (!botEnabled) {
+    generateEvent('TournamentBot:AlreadyStopped');
+    return;
+  }
+
+  setBool(TOURNAMENT_BOT_ENABLED_KEY, false);
+
+  const currentCounter = getCounter(TOURNAMENT_BOT_COUNTER_KEY);
+  const totalProcessed = getCounter(TOURNAMENT_BOT_TOTAL_PROCESSED);
+
+  generateEvent('TournamentBot:Stopped|cycles=' + currentCounter.toString() + '|totalProcessed=' + totalProcessed.toString());
+}
+
+/**
+ * Autonomous tournament bot cycle
+ * Manages tournament lifecycle: registration, rounds, prizes
+ */
+export function advanceTournamentBot(_: StaticArray<u8>): void {
+  const enabled = getBool(TOURNAMENT_BOT_ENABLED_KEY);
+  if (!enabled) {
+    generateEvent('TournamentBot:Disabled');
+    return;
+  }
+
+  generateEvent('TournamentBot:AdvanceStarted');
+
+  let botCounter = getCounter(TOURNAMENT_BOT_COUNTER_KEY);
+  const maxIterations = getCounter(TOURNAMENT_BOT_MAX_ITERATIONS);
+
+  generateEvent('TournamentBot:State|counter=' + botCounter.toString() + '|maxIterations=' + maxIterations.toString());
+
+  if (botCounter >= maxIterations) {
+    generateEvent('TournamentBot:MaxIterationsReached|counter=' + botCounter.toString());
+    setBool(TOURNAMENT_BOT_ENABLED_KEY, false);
+    return;
+  }
+
+  const totalTournaments = getCounter(TOURNAMENT_COUNT_KEY);
+  generateEvent('TournamentBot:Processing|totalTournaments=' + totalTournaments.toString());
+
+  let startTournamentId = botCounter * TOURNAMENT_BOT_MAX_PER_CYCLE + 1;
+  let endTournamentId = startTournamentId + TOURNAMENT_BOT_MAX_PER_CYCLE;
+
+  if (endTournamentId > totalTournaments) {
+    endTournamentId = totalTournaments;
+  }
+
+  generateEvent('TournamentBot:CheckingTournaments|start=' + startTournamentId.toString() + '|end=' + endTournamentId.toString());
+
+  let processedCount: u64 = 0;
+  let actionsCount: u64 = 0;
+
+  for (let i = startTournamentId; i <= endTournamentId; i++) {
+    const tournamentId = i.toString();
+    if (!hasKey(tournamentKey(tournamentId))) {
+      continue;
+    }
+
+    const tournamentData = getBytes(tournamentKey(tournamentId));
+    const tournament = Tournament.deserialize(tournamentData);
+
+    processedCount += 1;
+
+    if (tournament.isFinished) {
+      continue;
+    }
+
+    const now = Context.timestamp();
+
+    // Check if tournament should start (registration complete)
+    if (tournament.currentRound == 0 && tournament.participants.length >= (tournament.maxParticipants as i32)) {
+      generateEvent('TournamentBot:StartingTournament|tournamentId=' + tournamentId);
+
+      tournament.currentRound = 1;
+      tournament.startedAt = now;
+      setBytes(tournamentKey(tournamentId), tournament.serialize());
+
+      actionsCount += 1;
+      generateEvent('TournamentBot:TournamentStarted|tournamentId=' + tournamentId + '|participants=' + tournament.participants.length.toString());
+      continue;
+    }
+
+    // Auto-advance rounds when current round battles complete
+    // (This would check battle completion and advance to next round)
+    // Implementation depends on battle tracking per tournament
+    if (tournament.currentRound > 0 && !tournament.isFinished) {
+      generateEvent('TournamentBot:CheckingRoundProgress|tournamentId=' + tournamentId + '|round=' + tournament.currentRound.toString());
+      // TODO: Implement round progression logic when battle-tournament linking is added
+    }
+  }
+
+  // Update counters
+  botCounter += 1;
+  setCounter(TOURNAMENT_BOT_COUNTER_KEY, botCounter);
+
+  const totalProcessed = getCounter(TOURNAMENT_BOT_TOTAL_PROCESSED) + processedCount;
+  setCounter(TOURNAMENT_BOT_TOTAL_PROCESSED, totalProcessed);
+
+  generateEvent('TournamentBot:CycleComplete|cycle=' + botCounter.toString() + '|processed=' + processedCount.toString() + '|actions=' + actionsCount.toString());
+
+  // Schedule next cycle
+  if (botCounter < maxIterations) {
+    generateEvent('TournamentBot:SchedulingNext|cycle=' + botCounter.toString());
+    callNextSlot(Context.callee(), 'advanceTournamentBot', TOURNAMENT_BOT_GAS_COST);
+  } else {
+    generateEvent('TournamentBot:Completed|totalCycles=' + botCounter.toString() + '|totalProcessed=' + totalProcessed.toString());
+    setBool(TOURNAMENT_BOT_ENABLED_KEY, false);
+  }
+}
+
+// ============================================================================
+// AUTONOMOUS EXECUTION - PREDICTION BOT (Auto-settle markets)
+// ============================================================================
+
+/**
+ * Start the prediction bot for autonomous market settlement
+ * Args: maxIterations (u64) - maximum cycles to run
+ */
+export function startPredictionBot(args: StaticArray<u8>): void {
+  onlyRole(ADMIN_ROLE);
+  const ar = new Args(args);
+  let maxIterations: u64 = 1000;
+  const maxIter = ar.nextU64();
+  if (!maxIter.isErr()) {
+    maxIterations = maxIter.unwrap();
+  }
+
+  generateEvent('PredictionBot:Starting|maxIterations=' + maxIterations.toString());
+
+  setBool(PREDICTION_BOT_ENABLED_KEY, true);
+  setCounter(PREDICTION_BOT_COUNTER_KEY, 0);
+  setCounter(PREDICTION_BOT_MAX_ITERATIONS, maxIterations);
+  setCounter(PREDICTION_BOT_TOTAL_SETTLED, 0);
+
+  generateEvent('PredictionBot:Started|maxIterations=' + maxIterations.toString());
+
+  advancePredictionBot(new Args().serialize());
+}
+
+/**
+ * Stop the prediction bot
+ */
+export function stopPredictionBot(_: StaticArray<u8>): void {
+  onlyRole(ADMIN_ROLE);
+
+  const botEnabled = getBool(PREDICTION_BOT_ENABLED_KEY);
+  if (!botEnabled) {
+    generateEvent('PredictionBot:AlreadyStopped');
+    return;
+  }
+
+  setBool(PREDICTION_BOT_ENABLED_KEY, false);
+
+  const currentCounter = getCounter(PREDICTION_BOT_COUNTER_KEY);
+  const totalSettled = getCounter(PREDICTION_BOT_TOTAL_SETTLED);
+
+  generateEvent('PredictionBot:Stopped|cycles=' + currentCounter.toString() + '|totalSettled=' + totalSettled.toString());
+}
+
+/**
+ * Autonomous prediction bot cycle
+ * Auto-settles pools and prop bets when battles finish
+ */
+export function advancePredictionBot(_: StaticArray<u8>): void {
+  const enabled = getBool(PREDICTION_BOT_ENABLED_KEY);
+  if (!enabled) {
+    generateEvent('PredictionBot:Disabled');
+    return;
+  }
+
+  generateEvent('PredictionBot:AdvanceStarted');
+
+  let botCounter = getCounter(PREDICTION_BOT_COUNTER_KEY);
+  const maxIterations = getCounter(PREDICTION_BOT_MAX_ITERATIONS);
+
+  generateEvent('PredictionBot:State|counter=' + botCounter.toString() + '|maxIterations=' + maxIterations.toString());
+
+  if (botCounter >= maxIterations) {
+    generateEvent('PredictionBot:MaxIterationsReached|counter=' + botCounter.toString());
+    setBool(PREDICTION_BOT_ENABLED_KEY, false);
+    return;
+  }
+
+  const totalPools = getCounter(SINGLE_POOL_COUNT_KEY);
+  generateEvent('PredictionBot:Processing|totalPools=' + totalPools.toString());
+
+  let startPoolId = botCounter * PREDICTION_BOT_MAX_PER_CYCLE + 1;
+  let endPoolId = startPoolId + PREDICTION_BOT_MAX_PER_CYCLE;
+
+  if (endPoolId > totalPools) {
+    endPoolId = totalPools;
+  }
+
+  generateEvent('PredictionBot:CheckingPools|start=' + startPoolId.toString() + '|end=' + endPoolId.toString());
+
+  let processedCount: u64 = 0;
+  let settledCount: u64 = 0;
+
+  for (let i = startPoolId; i <= endPoolId; i++) {
+    const poolId = i.toString();
+    if (!hasKey(spoolKey(poolId))) {
+      continue;
+    }
+
+    const poolData = getBytes(spoolKey(poolId));
+    const pool = SinglePool.deserialize(poolData);
+
+    processedCount += 1;
+
+    // Skip if already settled or not closed
+    if (pool.isSettled || !pool.isClosed) {
+      continue;
+    }
+
+    // Check if battle is finished
+    const battleId = pool.battleId;
+    if (!hasKey(battleKey(battleId))) {
+      continue;
+    }
+
+    const battleData = getBytes(battleKey(battleId));
+    const battle = Battle.deserialize(battleData);
+
+    if (!battle.isFinished) {
+      continue;
+    }
+
+    // Auto-settle the pool
+    generateEvent('PredictionBot:SettlingPool|poolId=' + poolId + '|battleId=' + battleId);
+
+    // Determine winning outcome based on battle winner
+    pool.winningOutcome = battle.winner == 1 ? 0 : 1; // 0 = outcome A (player1), 1 = outcome B (player2)
+    pool.isSettled = true;
+
+    setBytes(spoolKey(poolId), pool.serialize());
+    settledCount += 1;
+
+    generateEvent('PredictionBot:PoolSettled|poolId=' + poolId + '|winner=' + pool.winningOutcome.toString());
+  }
+
+  // Update counters
+  botCounter += 1;
+  setCounter(PREDICTION_BOT_COUNTER_KEY, botCounter);
+
+  const totalSettled = getCounter(PREDICTION_BOT_TOTAL_SETTLED) + settledCount;
+  setCounter(PREDICTION_BOT_TOTAL_SETTLED, totalSettled);
+
+  generateEvent('PredictionBot:CycleComplete|cycle=' + botCounter.toString() + '|processed=' + processedCount.toString() + '|settled=' + settledCount.toString());
+
+  // Schedule next cycle
+  if (botCounter < maxIterations) {
+    generateEvent('PredictionBot:SchedulingNext|cycle=' + botCounter.toString());
+    callNextSlot(Context.callee(), 'advancePredictionBot', PREDICTION_BOT_GAS_COST);
+  } else {
+    generateEvent('PredictionBot:Completed|totalCycles=' + botCounter.toString() + '|totalSettled=' + totalSettled.toString());
+    setBool(PREDICTION_BOT_ENABLED_KEY, false);
+  }
+}
+
 /*
   Notes & Next Steps:
   - The above provides core patterns and functions to implement the game and prediction/betting contracts on Massa AssemblyScript.
