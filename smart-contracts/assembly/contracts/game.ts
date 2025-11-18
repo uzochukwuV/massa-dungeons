@@ -47,6 +47,25 @@ export const SINGLE_POOL_COUNT_KEY = 'single_pool_count';
 export const MULTIPOOL_COUNT_KEY = 'multipool_count';
 export const TOTAL_BETS_PLACED_KEY = 'total_bets_placed';
 export const TOTAL_BETS_CLAIMED_KEY = 'total_bets_claimed';
+export const EQUIPMENT_COUNT_KEY = 'equipment_count';
+
+// Treasury keys
+export const TREASURY_BALANCE_KEY = 'treasury_balance';
+export const TREASURY_WITHDRAWN_KEY = 'treasury_withdrawn';
+
+// Status effect types (used as bitmask)
+export const STATUS_NONE: u8 = 0;
+export const STATUS_POISON: u8 = 1; // DOT: 5% max HP per turn
+export const STATUS_STUN: u8 = 2; // Skip next turn
+export const STATUS_SHIELD: u8 = 4; // 30% damage reduction
+export const STATUS_RAGE: u8 = 8; // 50% damage increase
+export const STATUS_BURN: u8 = 16; // DOT: 8% max HP per turn
+
+// Equipment rarity
+export const RARITY_COMMON: u8 = 0;
+export const RARITY_RARE: u8 = 1;
+export const RARITY_EPIC: u8 = 2;
+export const RARITY_LEGENDARY: u8 = 3;
 
 // ============================================================================
 // STORAGE HELPER FUNCTIONS - Consistent Key Management
@@ -182,7 +201,76 @@ export function storeBump(name: string, bump: u8): void { // placeholder (for pa
  * - Turn execution + simple RNG placeholder (use onchain VRF in production)
  * - Wildcards with decision windows
  * - Finalize battle & produce result (for Prediction contract to settle)
+ * - Equipment system with NFT support
+ * - Status effects (Poison, Stun, Shield, Rage, Burn)
+ * - Combo system for consecutive attacks
  */
+
+// Equipment NFT class
+export class Equipment {
+  equipmentId: string; // unique ID
+  owner: Address;
+  type: u8; // 0=Weapon, 1=Armor, 2=Accessory
+  rarity: u8; // 0=Common, 1=Rare, 2=Epic, 3=Legendary
+  hpBonus: u64;
+  damageMinBonus: u16;
+  damageMaxBonus: u16;
+  critBonus: u16;
+  dodgeBonus: u16;
+  durability: u16; // Max uses before breaking
+  currentDurability: u16;
+  createdAt: u64;
+
+  constructor() {
+    this.equipmentId = '';
+    this.owner = new Address('0');
+    this.type = 0;
+    this.rarity = 0;
+    this.hpBonus = 0;
+    this.damageMinBonus = 0;
+    this.damageMaxBonus = 0;
+    this.critBonus = 0;
+    this.dodgeBonus = 0;
+    this.durability = 100;
+    this.currentDurability = 100;
+    this.createdAt = 0;
+  }
+
+  serialize(): StaticArray<u8> {
+    const a = new Args();
+    a.add(this.equipmentId);
+    a.add(this.owner.toString());
+    a.add(this.type);
+    a.add(this.rarity);
+    a.add(this.hpBonus);
+    a.add(this.damageMinBonus as u32);
+    a.add(this.damageMaxBonus as u32);
+    a.add(this.critBonus as u32);
+    a.add(this.dodgeBonus as u32);
+    a.add(this.durability as u32);
+    a.add(this.currentDurability as u32);
+    a.add(this.createdAt);
+    return a.serialize();
+  }
+
+  static deserialize(data: StaticArray<u8>): Equipment {
+    const a = new Args(data);
+    const e = new Equipment();
+    e.equipmentId = a.nextString().unwrap();
+    e.owner = new Address(a.nextString().unwrap());
+    e.type = a.nextU8().unwrap();
+    e.rarity = a.nextU8().unwrap();
+    e.hpBonus = a.nextU64().unwrap();
+    e.damageMinBonus = a.nextU32().unwrap() as u16;
+    e.damageMaxBonus = a.nextU32().unwrap() as u16;
+    e.critBonus = a.nextU32().unwrap() as u16;
+    e.dodgeBonus = a.nextU32().unwrap() as u16;
+    e.durability = a.nextU32().unwrap() as u16;
+    e.currentDurability = a.nextU32().unwrap() as u16;
+    e.createdAt = a.nextU64().unwrap();
+    return e;
+  }
+}
 
 export class Character {
   owner: Address;
@@ -201,6 +289,10 @@ export class Character {
   totalLosses: u32;
   mmr: u64;
   createdAt: u64;
+  // Equipment slots (IDs of equipped items)
+  weaponId: string;
+  armorId: string;
+  accessoryId: string;
 
   constructor() {
     this.owner = new Address('0');
@@ -219,6 +311,9 @@ export class Character {
     this.totalLosses = 0;
     this.mmr = 1000;
     this.createdAt = 0;
+    this.weaponId = '';
+    this.armorId = '';
+    this.accessoryId = '';
   }
 
   serialize(): StaticArray<u8> {
@@ -239,6 +334,9 @@ export class Character {
     a.add(this.totalLosses);
     a.add(this.mmr);
     a.add(this.createdAt);
+    a.add(this.weaponId);
+    a.add(this.armorId);
+    a.add(this.accessoryId);
     return a.serialize();
   }
 
@@ -261,6 +359,9 @@ export class Character {
     c.totalLosses = a.nextU32().unwrap();
     c.mmr = a.nextU64().unwrap();
     c.createdAt = a.nextU64().unwrap();
+    c.weaponId = a.nextString().unwrap();
+    c.armorId = a.nextString().unwrap();
+    c.accessoryId = a.nextString().unwrap();
     return c;
   }
 }
@@ -284,6 +385,14 @@ export class Battle {
   wildcardDecisionDeadline: u64;
   wildcardPlayer1Decision: i8; // -1 none, 0 no, 1 yes
   wildcardPlayer2Decision: i8;
+  // Status effects (bitmask)
+  player1StatusEffects: u8;
+  player2StatusEffects: u8;
+  player1StatusDuration: u8; // Turns remaining
+  player2StatusDuration: u8;
+  // Combo tracking
+  player1ComboCount: u8;
+  player2ComboCount: u8;
 
   constructor() {
     this.player1Char = new Address('0');
@@ -303,6 +412,12 @@ export class Battle {
     this.wildcardDecisionDeadline = 0;
     this.wildcardPlayer1Decision = -1;
     this.wildcardPlayer2Decision = -1;
+    this.player1StatusEffects = STATUS_NONE;
+    this.player2StatusEffects = STATUS_NONE;
+    this.player1StatusDuration = 0;
+    this.player2StatusDuration = 0;
+    this.player1ComboCount = 0;
+    this.player2ComboCount = 0;
   }
 
   serialize(): StaticArray<u8> {
@@ -324,6 +439,12 @@ export class Battle {
     a.add(this.wildcardDecisionDeadline);
     a.add(this.wildcardPlayer1Decision as i32);
     a.add(this.wildcardPlayer2Decision as i32);
+    a.add(this.player1StatusEffects);
+    a.add(this.player2StatusEffects);
+    a.add(this.player1StatusDuration);
+    a.add(this.player2StatusDuration);
+    a.add(this.player1ComboCount);
+    a.add(this.player2ComboCount);
     return a.serialize();
   }
 
@@ -347,6 +468,12 @@ export class Battle {
     b.wildcardDecisionDeadline = a.nextU64().unwrap();
     b.wildcardPlayer1Decision = a.nextI32().unwrap() as i8;
     b.wildcardPlayer2Decision = a.nextI32().unwrap() as i8;
+    b.player1StatusEffects = a.nextU8().unwrap();
+    b.player2StatusEffects = a.nextU8().unwrap();
+    b.player1StatusDuration = a.nextU8().unwrap();
+    b.player2StatusDuration = a.nextU8().unwrap();
+    b.player1ComboCount = a.nextU8().unwrap();
+    b.player2ComboCount = a.nextU8().unwrap();
     return b;
   }
 }
@@ -354,11 +481,15 @@ export class Battle {
 // Storage prefixes
 const CHARACTER_PREFIX = 'character:'; // character:<id> -> serialized Character
 const BATTLE_PREFIX = 'battle:';       // battle:<id> -> serialized Battle
+const EQUIPMENT_PREFIX = 'equipment:'; // equipment:<id> -> serialized Equipment
 const GAME_AUTH_SETTLER = 'game:auth_settler:'; // set by admin: {settlerAddress:true}
+const BETTING_STREAK_PREFIX = 'streak:'; // streak:<address> -> win streak counter
 
 // Helpers
 function characterKey(id: string): string { return CHARACTER_PREFIX + id; }
 function battleKey(id: string): string { return BATTLE_PREFIX + id; }
+function equipmentKey(id: string): string { return EQUIPMENT_PREFIX + id; }
+function streakKey(addr: Address): string { return BETTING_STREAK_PREFIX + addr.toString(); }
 
 // Constructor for game contract
 export function game_constructor(_: StaticArray<u8>): void {
@@ -845,6 +976,178 @@ export function game_getLeaderboard(args: StaticArray<u8>): StaticArray<u8> {
   return result.serialize();
 }
 
+// ============================================================================
+// EQUIPMENT SYSTEM
+// ============================================================================
+
+// Create equipment (admin or from battle rewards)
+export function game_createEquipment(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  onlyRole(ADMIN_ROLE); // Or could be called by battle system
+  const ar = new Args(args);
+  const equipmentId = ar.nextString().unwrap();
+  const ownerAddr = new Address(ar.nextString().unwrap());
+  const type = ar.nextU8().unwrap();
+  const rarity = ar.nextU8().unwrap();
+
+  assert(!hasKey(equipmentKey(equipmentId)), 'equipment exists');
+
+  const equip = new Equipment();
+  equip.equipmentId = equipmentId;
+  equip.owner = ownerAddr;
+  equip.type = type;
+  equip.rarity = rarity;
+  equip.createdAt = Context.timestamp();
+
+  // Set stats based on rarity
+  switch (rarity) {
+    case RARITY_COMMON:
+      equip.hpBonus = 10;
+      equip.damageMinBonus = 1;
+      equip.damageMaxBonus = 2;
+      equip.critBonus = 2;
+      equip.dodgeBonus = 1;
+      equip.durability = 100;
+      break;
+    case RARITY_RARE:
+      equip.hpBonus = 25;
+      equip.damageMinBonus = 3;
+      equip.damageMaxBonus = 5;
+      equip.critBonus = 5;
+      equip.dodgeBonus = 3;
+      equip.durability = 200;
+      break;
+    case RARITY_EPIC:
+      equip.hpBonus = 50;
+      equip.damageMinBonus = 5;
+      equip.damageMaxBonus = 10;
+      equip.critBonus = 10;
+      equip.dodgeBonus = 5;
+      equip.durability = 300;
+      break;
+    case RARITY_LEGENDARY:
+      equip.hpBonus = 100;
+      equip.damageMinBonus = 10;
+      equip.damageMaxBonus = 20;
+      equip.critBonus = 15;
+      equip.dodgeBonus = 10;
+      equip.durability = 500;
+      break;
+  }
+  equip.currentDurability = equip.durability;
+
+  setBytes(equipmentKey(equipmentId), equip.serialize());
+  incrementCounter(EQUIPMENT_COUNT_KEY);
+  endNonReentrant();
+  generateEvent('EquipmentCreated:' + equipmentId + ':rarity=' + rarity.toString());
+}
+
+// Equip item to character
+export function game_equipItem(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  const ar = new Args(args);
+  const charId = ar.nextString().unwrap();
+  const equipmentId = ar.nextString().unwrap();
+
+  assert(hasKey(characterKey(charId)), 'character not found');
+  assert(hasKey(equipmentKey(equipmentId)), 'equipment not found');
+
+  const char = Character.deserialize(getBytes(characterKey(charId)));
+  const equip = Equipment.deserialize(getBytes(equipmentKey(equipmentId)));
+
+  const caller = Context.caller();
+  assert(caller.toString() == char.owner.toString(), 'not character owner');
+  assert(caller.toString() == equip.owner.toString(), 'not equipment owner');
+
+  // Equip based on type
+  if (equip.type == 0) char.weaponId = equipmentId;
+  else if (equip.type == 1) char.armorId = equipmentId;
+  else if (equip.type == 2) char.accessoryId = equipmentId;
+
+  setBytes(characterKey(charId), char.serialize());
+  endNonReentrant();
+  generateEvent('ItemEquipped:' + charId + ':' + equipmentId);
+}
+
+// Transfer equipment NFT
+export function game_transferEquipment(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  const ar = new Args(args);
+  const equipmentId = ar.nextString().unwrap();
+  const toAddr = new Address(ar.nextString().unwrap());
+
+  assert(hasKey(equipmentKey(equipmentId)), 'equipment not found');
+  const equip = Equipment.deserialize(getBytes(equipmentKey(equipmentId)));
+
+  const caller = Context.caller();
+  assert(caller.toString() == equip.owner.toString(), 'not owner');
+
+  equip.owner = toAddr;
+  setBytes(equipmentKey(equipmentId), equip.serialize());
+  endNonReentrant();
+  generateEvent('EquipmentTransferred:' + equipmentId);
+}
+
+// Read equipment
+export function game_readEquipment(args: StaticArray<u8>): StaticArray<u8> {
+  const ar = new Args(args);
+  const equipmentId = ar.nextString().unwrap();
+  if (!hasKey(equipmentKey(equipmentId))) return stringToBytes('null');
+  return getBytes(equipmentKey(equipmentId));
+}
+
+// ============================================================================
+// TREASURY MANAGEMENT
+// ============================================================================
+
+// Add funds to treasury (called by prediction contract)
+export function game_addToTreasury(args: StaticArray<u8>): void {
+  nonReentrant();
+  const ar = new Args(args);
+  const amount = ar.nextU64().unwrap();
+
+  const currentBalance = getCounter(TREASURY_BALANCE_KEY);
+  setCounter(TREASURY_BALANCE_KEY, currentBalance + amount);
+  endNonReentrant();
+  generateEvent('TreasuryDeposit:' + amount.toString());
+}
+
+// Withdraw from treasury (admin only)
+export function game_withdrawTreasury(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  onlyRole(ADMIN_ROLE);
+  const ar = new Args(args);
+  const amount = ar.nextU64().unwrap();
+  const tokenAddr = new Address(ar.nextString().unwrap());
+  const recipient = new Address(ar.nextString().unwrap());
+
+  const currentBalance = getCounter(TREASURY_BALANCE_KEY);
+  assert(currentBalance >= amount, 'insufficient treasury balance');
+
+  setCounter(TREASURY_BALANCE_KEY, currentBalance - amount);
+  const totalWithdrawn = getCounter(TREASURY_WITHDRAWN_KEY);
+  setCounter(TREASURY_WITHDRAWN_KEY, totalWithdrawn + amount);
+
+  // Transfer tokens
+  const token = new IERC20(tokenAddr);
+  token.transfer(recipient, amount);
+
+  endNonReentrant();
+  generateEvent('TreasuryWithdrawal:' + amount.toString());
+}
+
+// Get treasury balance
+export function game_getTreasuryBalance(_: StaticArray<u8>): StaticArray<u8> {
+  const result = new Args();
+  result.add(getCounter(TREASURY_BALANCE_KEY));
+  result.add(getCounter(TREASURY_WITHDRAWN_KEY));
+  return result.serialize();
+}
+
 //////////////////////////////
 // prediction.ts - Betting contract
 //////////////////////////////
@@ -880,6 +1183,10 @@ export class SinglePool {
   isSettled: bool;
   winningOutcome: i8; // -1 none, 0 A, 1 B
   createdAt: u64;
+  // Dynamic pool caps & risk management
+  maxPoolSize: u64; // 0 = unlimited
+  minBetSize: u64;
+  maxBetSize: u64;
 
   constructor() {
     this.poolId = '';
@@ -896,6 +1203,9 @@ export class SinglePool {
     this.isSettled = false;
     this.winningOutcome = -1;
     this.createdAt = 0;
+    this.maxPoolSize = 0; // unlimited by default
+    this.minBetSize = 1; // 1 token minimum
+    this.maxBetSize = 0; // unlimited by default
   }
 
   serialize(): StaticArray<u8> {
@@ -914,6 +1224,9 @@ export class SinglePool {
     a.add(this.isSettled);
     a.add(this.winningOutcome as i32);
     a.add(this.createdAt);
+    a.add(this.maxPoolSize);
+    a.add(this.minBetSize);
+    a.add(this.maxBetSize);
     return a.serialize();
   }
 
@@ -934,6 +1247,9 @@ export class SinglePool {
     p.isSettled = a.nextBool().unwrap();
     p.winningOutcome = a.nextI32().unwrap() as i8;
     p.createdAt = a.nextU64().unwrap();
+    p.maxPoolSize = a.nextU64().unwrap();
+    p.minBetSize = a.nextU64().unwrap();
+    p.maxBetSize = a.nextU64().unwrap();
     return p;
   }
 }
@@ -1189,6 +1505,18 @@ export function prediction_placeSingleBet(args: StaticArray<u8>): void {
   assert(!pool.isClosed, 'pool closed');
   assert(Context.timestamp() < pool.closeTs, 'betting closed');
 
+  // Validate bet size against pool caps
+  assert(amount >= pool.minBetSize, 'bet below minimum');
+  if (pool.maxBetSize > 0) {
+    assert(amount <= pool.maxBetSize, 'bet above maximum');
+  }
+
+  // Check pool size cap
+  const newTotal = pool.totalPool + u128.fromU64(amount);
+  if (pool.maxPoolSize > 0) {
+    assert(newTotal.toU64() <= pool.maxPoolSize, 'pool cap reached');
+  }
+
   // transfer tokens from bettor to contract
   const caller = Context.caller();
   const token = new IERC20(pool.token);
@@ -1200,7 +1528,7 @@ export function prediction_placeSingleBet(args: StaticArray<u8>): void {
   token.transferFrom(caller, Context.callee(), amount);
 
   // update pool totals
-  pool.totalPool = pool.totalPool + u128.fromU64(amount);
+  pool.totalPool = newTotal;
   if (outcome == 0) pool.outcomeABets = pool.outcomeABets + u128.fromU64(amount);
   else pool.outcomeBBets = pool.outcomeBBets + u128.fromU64(amount);
 
@@ -1303,15 +1631,28 @@ export function prediction_claimSingleBet(args: StaticArray<u8>): void {
   assert(hasKey(betKey), 'bet not found');
   const bet = SingleBet.deserialize(getBytes(betKey));
   assert(!bet.isClaimed, 'already claimed');
-  // if losing bet, mark claimed and exit
+
+  // Track betting streaks
+  const streakKeyBettor = streakKey(bettor);
+  const currentStreak = getCounter(streakKeyBettor);
+
+  // if losing bet, mark claimed and reset streak
   if (bet.outcome != pool.winningOutcome) {
     bet.isClaimed = true;
     setBytes(betKey, bet.serialize());
     incrementCounter(TOTAL_BETS_CLAIMED_KEY);
+
+    // Reset losing streak
+    setCounter(streakKeyBettor, 0);
+
     endNonReentrant();
-    generateEvent('SingleBetClaimed:' + poolId + ':' + bettor.toString() + ':payout=0');
+    generateEvent('SingleBetClaimed:' + poolId + ':' + bettor.toString() + ':payout=0:streak=0');
     return;
   }
+
+  // Winning bet - increment streak
+  const newStreak = currentStreak + 1;
+  setCounter(streakKeyBettor, newStreak);
 
   // compute payout: payout = floor( payoutPool * bet.amount / totalWinners )
   const totalU = pool.totalPool;
@@ -1337,9 +1678,25 @@ export function prediction_claimSingleBet(args: StaticArray<u8>): void {
   // Increment claimed bets counter
   incrementCounter(TOTAL_BETS_CLAIMED_KEY);
 
-  // Optionally send house fee to treasury (omitted: implement treasury)
+  // Calculate streak bonus (5% per consecutive win, max 25% at 5 streak)
+  let streakBonus: u64 = 0;
+  if (newStreak >= 2) {
+    const bonusPercent = newStreak < 5 ? (newStreak - 1) * 5 : 25;
+    streakBonus = payoutU64 * bonusPercent / 100;
+    // Add bonus to payout
+    if (streakBonus > 0) {
+      tokenContract.transfer(bettor, streakBonus);
+    }
+  }
+
+  // Send house edge to treasury
+  const houseAmountU64 = houseAmount.toU64();
+  if (houseAmountU64 > 0) {
+    setCounter(TREASURY_BALANCE_KEY, getCounter(TREASURY_BALANCE_KEY) + houseAmountU64);
+  }
+
   endNonReentrant();
-  generateEvent('SingleBetClaimed:' + poolId + ':' + bettor.toString() + ':payout=' + payoutU.toString());
+  generateEvent('SingleBetClaimed:' + poolId + ':' + bettor.toString() + ':payout=' + payoutU.toString() + ':streak=' + newStreak.toString() + ':bonus=' + streakBonus.toString());
 }
 
 // Authorize settler (admin)
@@ -1349,6 +1706,15 @@ export function prediction_setAuthorizedSettler(args: StaticArray<u8>): void {
   const addr = ar.nextString().unwrap();
   setString(AUTH_SETTLER_PREFIX + addr, '1');
   generateEvent('SettlerAuthorized:' + addr);
+}
+
+// Get betting streak for an address
+export function prediction_getBettingStreak(args: StaticArray<u8>): StaticArray<u8> {
+  const ar = new Args(args);
+  const addr = new Address(ar.nextString().unwrap());
+  const result = new Args();
+  result.add(getCounter(streakKey(addr)));
+  return result.serialize();
 }
 
 // Multipool / parlay functions follow the same safety patterns.
