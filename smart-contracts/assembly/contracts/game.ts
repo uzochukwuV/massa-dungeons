@@ -541,18 +541,184 @@ export class Battle {
   }
 }
 
+// Tournament class for bracket-style competitions
+export class Tournament {
+  tournamentId: string;
+  name: string;
+  entryFee: u64;
+  prizePool: u64;
+  maxParticipants: u8; // Power of 2: 4, 8, 16, 32
+  participants: string[]; // Character IDs (comma-separated for serialization)
+  currentRound: u8; // 0 = registration, 1 = round 1, etc.
+  isFinished: bool;
+  winner: string; // Character ID
+  createdAt: u64;
+  startedAt: u64;
+
+  constructor() {
+    this.tournamentId = '';
+    this.name = '';
+    this.entryFee = 0;
+    this.prizePool = 0;
+    this.maxParticipants = 8;
+    this.participants = [];
+    this.currentRound = 0;
+    this.isFinished = false;
+    this.winner = '';
+    this.createdAt = 0;
+    this.startedAt = 0;
+  }
+
+  serialize(): StaticArray<u8> {
+    const a = new Args();
+    a.add(this.tournamentId);
+    a.add(this.name);
+    a.add(this.entryFee);
+    a.add(this.prizePool);
+    a.add(this.maxParticipants);
+    a.add(this.participants.join(','));
+    a.add(this.currentRound);
+    a.add(this.isFinished);
+    a.add(this.winner);
+    a.add(this.createdAt);
+    a.add(this.startedAt);
+    return a.serialize();
+  }
+
+  static deserialize(data: StaticArray<u8>): Tournament {
+    const a = new Args(data);
+    const t = new Tournament();
+    t.tournamentId = a.nextString().unwrap();
+    t.name = a.nextString().unwrap();
+    t.entryFee = a.nextU64().unwrap();
+    t.prizePool = a.nextU64().unwrap();
+    t.maxParticipants = a.nextU8().unwrap();
+    const participantsStr = a.nextString().unwrap();
+    t.participants = participantsStr.length > 0 ? participantsStr.split(',') : [];
+    t.currentRound = a.nextU8().unwrap();
+    t.isFinished = a.nextBool().unwrap();
+    t.winner = a.nextString().unwrap();
+    t.createdAt = a.nextU64().unwrap();
+    t.startedAt = a.nextU64().unwrap();
+    return t;
+  }
+}
+
+// Leaderboard entry
+export class LeaderboardEntry {
+  characterId: string;
+  characterName: string;
+  owner: Address;
+  wins: u32;
+  losses: u32;
+  mmr: u64;
+  totalDamageDealt: u64;
+  highestCombo: u8;
+  tournamentsWon: u16;
+
+  constructor() {
+    this.characterId = '';
+    this.characterName = '';
+    this.owner = new Address('0');
+    this.wins = 0;
+    this.losses = 0;
+    this.mmr = 1000;
+    this.totalDamageDealt = 0;
+    this.highestCombo = 0;
+    this.tournamentsWon = 0;
+  }
+
+  serialize(): StaticArray<u8> {
+    const a = new Args();
+    a.add(this.characterId);
+    a.add(this.characterName);
+    a.add(this.owner.toString());
+    a.add(this.wins);
+    a.add(this.losses);
+    a.add(this.mmr);
+    a.add(this.totalDamageDealt);
+    a.add(this.highestCombo);
+    a.add(this.tournamentsWon as u32);
+    return a.serialize();
+  }
+
+  static deserialize(data: StaticArray<u8>): LeaderboardEntry {
+    const a = new Args(data);
+    const l = new LeaderboardEntry();
+    l.characterId = a.nextString().unwrap();
+    l.characterName = a.nextString().unwrap();
+    l.owner = new Address(a.nextString().unwrap());
+    l.wins = a.nextU32().unwrap();
+    l.losses = a.nextU32().unwrap();
+    l.mmr = a.nextU64().unwrap();
+    l.totalDamageDealt = a.nextU64().unwrap();
+    l.highestCombo = a.nextU8().unwrap();
+    l.tournamentsWon = a.nextU32().unwrap() as u16;
+    return l;
+  }
+}
+
+// Achievement types
+export const ACHIEVEMENT_FIRST_WIN: u8 = 1;
+export const ACHIEVEMENT_10_WINS: u8 = 2;
+export const ACHIEVEMENT_50_WINS: u8 = 3;
+export const ACHIEVEMENT_100_WINS: u8 = 4;
+export const ACHIEVEMENT_TOURNAMENT_WIN: u8 = 5;
+export const ACHIEVEMENT_5_WIN_STREAK: u8 = 6;
+export const ACHIEVEMENT_COMBO_MASTER: u8 = 7; // 5+ combo
+export const ACHIEVEMENT_SKILL_MASTER: u8 = 8; // Learn all skills
+export const ACHIEVEMENT_LEGENDARY_EQUIPMENT: u8 = 9;
+export const ACHIEVEMENT_MAX_LEVEL: u8 = 10; // Reach level 20
+
+// Player achievement tracking
+export class PlayerAchievements {
+  playerAddress: string;
+  unlockedAchievements: string; // Comma-separated achievement IDs
+  achievementTimestamps: string; // Comma-separated timestamps
+
+  constructor() {
+    this.playerAddress = '';
+    this.unlockedAchievements = '';
+    this.achievementTimestamps = '';
+  }
+
+  serialize(): StaticArray<u8> {
+    const a = new Args();
+    a.add(this.playerAddress);
+    a.add(this.unlockedAchievements);
+    a.add(this.achievementTimestamps);
+    return a.serialize();
+  }
+
+  static deserialize(data: StaticArray<u8>): PlayerAchievements {
+    const a = new Args(data);
+    const p = new PlayerAchievements();
+    p.playerAddress = a.nextString().unwrap();
+    p.unlockedAchievements = a.nextString().unwrap();
+    p.achievementTimestamps = a.nextString().unwrap();
+    return p;
+  }
+}
+
 // Storage prefixes
 const CHARACTER_PREFIX = 'character:'; // character:<id> -> serialized Character
 const BATTLE_PREFIX = 'battle:';       // battle:<id> -> serialized Battle
 const EQUIPMENT_PREFIX = 'equipment:'; // equipment:<id> -> serialized Equipment
+const TOURNAMENT_PREFIX = 'tournament:'; // tournament:<id> -> serialized Tournament
+const LEADERBOARD_PREFIX = 'leaderboard:'; // leaderboard:<characterId> -> LeaderboardEntry
+const ACHIEVEMENTS_PREFIX = 'achievements:'; // achievements:<address> -> PlayerAchievements
 const GAME_AUTH_SETTLER = 'game:auth_settler:'; // set by admin: {settlerAddress:true}
 const BETTING_STREAK_PREFIX = 'streak:'; // streak:<address> -> win streak counter
+const TOURNAMENT_COUNT_KEY = 'tournament_count';
 
 // Helpers
 function characterKey(id: string): string { return CHARACTER_PREFIX + id; }
 function battleKey(id: string): string { return BATTLE_PREFIX + id; }
 function equipmentKey(id: string): string { return EQUIPMENT_PREFIX + id; }
 function streakKey(addr: Address): string { return BETTING_STREAK_PREFIX + addr.toString(); }
+function tournamentKey(id: string): string { return TOURNAMENT_PREFIX + id; }
+function leaderboardKey(charId: string): string { return LEADERBOARD_PREFIX + charId; }
+function achievementsKey(addr: string): string { return ACHIEVEMENTS_PREFIX + addr; }
 
 // Constructor for game contract
 export function game_constructor(_: StaticArray<u8>): void {
