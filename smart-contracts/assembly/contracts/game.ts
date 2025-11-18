@@ -649,8 +649,10 @@ export function game_decideWildcard(args: StaticArray<u8>): void {
       if (battle.wildcardType == 0) {
         // double damage next turn: represent as combo increment
         // (for brevity, apply immediate effect)
-        battle.player1Hp = Math.min<u64>(battle.player1Hp + 50, 1_000_000);
-        battle.player2Hp = Math.min<u64>(battle.player2Hp + 50, 1_000_000);
+        const newHp1 = battle.player1Hp + 50;
+        battle.player1Hp = newHp1 < 1_000_000 ? newHp1 : 1_000_000;
+        const newHp2 = battle.player2Hp + 50;
+        battle.player2Hp = newHp2 < 1_000_000 ? newHp2 : 1_000_000;
       }
     }
     // reset wildcard
@@ -884,11 +886,11 @@ export class SinglePool {
     this.battleId = '';
     this.token = new Address('0');
     this.closeTs = 0;
-    this.totalPool = 0;
-    this.outcomeABets = 0;
-    this.outcomeBBets = 0;
-    this.outcomeAOddsFP = 0;
-    this.outcomeBOddsFP = 0;
+    this.totalPool = u128.Zero;
+    this.outcomeABets = u128.Zero;
+    this.outcomeBBets = u128.Zero;
+    this.outcomeAOddsFP = u128.Zero;
+    this.outcomeBOddsFP = u128.Zero;
     this.houseEdgeBps = DEFAULT_HOUSE_EDGE_BPS;
     this.isClosed = false;
     this.isSettled = false;
@@ -991,9 +993,9 @@ export class Multipool {
   constructor() {
     this.multipoolId = '';
     this.token = new Address('0');
-    this.totalPool = 0;
-    this.totalWeightFP = 0;
-    this.totalWinnerWeightFP = 0;
+    this.totalPool = u128.Zero;
+    this.totalWeightFP = u128.Zero;
+    this.totalWinnerWeightFP = u128.Zero;
     this.isFinalized = false;
     this.houseEdgeBps = DEFAULT_HOUSE_EDGE_BPS;
     this.createdAt = 0;
@@ -1153,11 +1155,11 @@ export function prediction_createSinglePool(args: StaticArray<u8>): void {
   p.battleId = battleId;
   p.token = tokenAddr;
   p.closeTs = closeTs;
-  p.totalPool = 0;
-  p.outcomeABets = 0;
-  p.outcomeBBets = 0;
-  p.outcomeAOddsFP = 0;
-  p.outcomeBOddsFP = 0;
+  p.totalPool = u128.Zero;
+  p.outcomeABets = u128.Zero;
+  p.outcomeBBets = u128.Zero;
+  p.outcomeAOddsFP = u128.Zero;
+  p.outcomeBOddsFP = u128.Zero;
   p.houseEdgeBps = DEFAULT_HOUSE_EDGE_BPS;
   p.isClosed = false;
   p.isSettled = false;
@@ -1191,11 +1193,12 @@ export function prediction_placeSingleBet(args: StaticArray<u8>): void {
   const caller = Context.caller();
   const token = new IERC20(pool.token);
   const allowance = token.allowance(caller, Context.callee());
-  assert(allowance.toU64() >= amount, 'allowance low');
+  const amountU256 = u256.fromU64(amount);
+  assert(allowance >= amountU256, 'allowance low');
   const bal = token.balanceOf(caller);
-  assert(bal.toU64() >= amount, 'insufficient token balance');
+  assert(bal >= amountU256, 'insufficient token balance');
 
-  token.transferFrom(caller, Context.callee(), u256.fromU64(amount));
+  token.transferFrom(caller, Context.callee(), amountU256);
 
   // update pool totals
   pool.totalPool = pool.totalPool + u128.fromU64(amount);
@@ -1294,7 +1297,7 @@ export function prediction_claimSingleBet(args: StaticArray<u8>): void {
   const bettorAddrStr = ar.nextString().unwrap();
   const bettor = new Address(bettorAddrStr);
 
-  assert(Storage.has(stringToBytes(spoolKey(poolId))), 'pool missing');
+  assert(hasKey(spoolKey(poolId)), 'pool missing');
   const pool = SinglePool.deserialize(getBytes(spoolKey(poolId)));
   assert(pool.isSettled, 'pool not settled');
   const betKey = sbetKey(poolId, bettor.toString());
@@ -1319,7 +1322,7 @@ export function prediction_claimSingleBet(args: StaticArray<u8>): void {
   assert(winnerTotal > 0, 'no winners in pool');
 
   const payoutU = payoutPool * bet.amount / winnerTotal; // u128 math
-  const payout = payoutU.toString(); // string for storage events
+  const payoutU256 = u256.fromU128(payoutU); // Convert to u256 for token transfer
 
   // mark claimed before transfer (reentrancy guard)
   bet.isClaimed = true;
@@ -1329,15 +1332,15 @@ export function prediction_claimSingleBet(args: StaticArray<u8>): void {
   const tokenContract = new IERC20(pool.token);
   // ensure contract has balance
   const bal = tokenContract.balanceOf(Context.callee());
-  assert(bal >= u256.fromString(payout), 'contract insufficient funds');
-  tokenContract.transfer(bettor, u256.fromString(payout));
+  assert(bal >= payoutU256, 'contract insufficient funds');
+  tokenContract.transfer(bettor, payoutU256);
 
   // Increment claimed bets counter
   incrementCounter(TOTAL_BETS_CLAIMED_KEY);
 
   // Optionally send house fee to treasury (omitted: implement treasury)
   endNonReentrant();
-  generateEvent('SingleBetClaimed:' + poolId + ':' + bettor.toString() + ':payout=' + payout);
+  generateEvent('SingleBetClaimed:' + poolId + ':' + bettor.toString() + ':payout=' + payoutU.toString());
 }
 
 // Authorize settler (admin)
@@ -1414,9 +1417,9 @@ export function prediction_createMultipool(args: StaticArray<u8>): void {
   const mp = new Multipool();
   mp.multipoolId = multipoolId;
   mp.token = tokenAddr;
-  mp.totalPool = 0;
-  mp.totalWeightFP = 0;
-  mp.totalWinnerWeightFP = 0;
+  mp.totalPool = u128.Zero;
+  mp.totalWeightFP = u128.Zero;
+  mp.totalWinnerWeightFP = u128.Zero;
   mp.isFinalized = false;
   mp.houseEdgeBps = DEFAULT_HOUSE_EDGE_BPS;
   mp.createdAt = Context.timestamp();
@@ -1472,11 +1475,12 @@ export function prediction_placeMultibet(args: StaticArray<u8>): void {
 
   const token = new IERC20(mp.token);
   const allowance = token.allowance(caller, Context.callee());
-  assert(allowance.toU64() >= amount, 'allowance low');
+  const amountU256 = u256.fromU64(amount);
+  assert(allowance >= amountU256, 'allowance low');
   const bal = token.balanceOf(caller);
-  assert(bal.toU64() >= amount, 'insufficient balance');
+  assert(bal >= amountU256, 'insufficient balance');
 
-  token.transferFrom(caller, Context.callee(), u256.fromU64(amount));
+  token.transferFrom(caller, Context.callee(), amountU256);
 
   // Create betslip
   const betslip = new Betslip();
@@ -1597,7 +1601,7 @@ export function prediction_claimMultibet(args: StaticArray<u8>): void {
 
   assert(mp.totalWinnerWeightFP > 0, 'no winners');
   const payoutU = payoutPool * betslip.weightFP / mp.totalWinnerWeightFP;
-  const payout = payoutU.toString();
+  const payoutU256 = u256.fromU128(payoutU); // Convert to u256 for token transfer
 
   // Mark claimed before transfer
   betslip.isClaimed = true;
@@ -1606,12 +1610,12 @@ export function prediction_claimMultibet(args: StaticArray<u8>): void {
   // Transfer tokens
   const token = new IERC20(mp.token);
   const bal = token.balanceOf(Context.callee());
-  assert(bal >= u256.fromString(payout), 'contract insufficient funds');
-  token.transfer(betslip.bettor, u256.fromString(payout));
+  assert(bal >= payoutU256, 'contract insufficient funds');
+  token.transfer(betslip.bettor, payoutU256);
 
   incrementCounter(TOTAL_BETS_CLAIMED_KEY);
   endNonReentrant();
-  generateEvent('MultibetClaimed:' + betslipId + ':payout=' + payout);
+  generateEvent('MultibetClaimed:' + betslipId + ':payout=' + payoutU.toString());
 }
 
 // View functions for multipool
