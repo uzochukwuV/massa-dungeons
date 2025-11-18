@@ -691,7 +691,7 @@ export function game_executeTurn(args: StaticArray<u8>): void {
     return;
   }
 
-  // compute damage (simplified)
+  // compute damage (with equipment, status effects, and combo system)
   // load characters to get stats
   const c1Raw = getBytes(characterKey(battle.player1Char.toString()));
   const c2Raw = getBytes(characterKey(battle.player2Char.toString()));
@@ -701,31 +701,174 @@ export function game_executeTurn(args: StaticArray<u8>): void {
   const attacker = isPlayer1 ? c1 : c2;
   const defender = isPlayer1 ? c2 : c1;
 
-  // damage base
-  const dmgRange = attacker.baseDamageMax - attacker.baseDamageMin;
+  // Load equipped items and apply stat bonuses
+  let attackerDamageMinBonus: u16 = 0;
+  let attackerDamageMaxBonus: u16 = 0;
+  let attackerCritBonus: u16 = 0;
+  let defenderDodgeBonus: u16 = 0;
+
+  // Load attacker's equipment
+  if (attacker.weaponId.length > 0 && hasKey(equipmentKey(attacker.weaponId))) {
+    const weaponRaw = getBytes(equipmentKey(attacker.weaponId));
+    const weapon = Equipment.deserialize(weaponRaw);
+    attackerDamageMinBonus += weapon.damageMinBonus;
+    attackerDamageMaxBonus += weapon.damageMaxBonus;
+    attackerCritBonus += weapon.critBonus;
+  }
+  if (attacker.accessoryId.length > 0 && hasKey(equipmentKey(attacker.accessoryId))) {
+    const accessoryRaw = getBytes(equipmentKey(attacker.accessoryId));
+    const accessory = Equipment.deserialize(accessoryRaw);
+    attackerCritBonus += accessory.critBonus;
+  }
+
+  // Load defender's equipment
+  if (defender.armorId.length > 0 && hasKey(equipmentKey(defender.armorId))) {
+    const armorRaw = getBytes(equipmentKey(defender.armorId));
+    const armor = Equipment.deserialize(armorRaw);
+    defenderDodgeBonus += armor.dodgeBonus;
+  }
+  if (defender.accessoryId.length > 0 && hasKey(equipmentKey(defender.accessoryId))) {
+    const accessoryRaw = getBytes(equipmentKey(defender.accessoryId));
+    const accessory = Equipment.deserialize(accessoryRaw);
+    defenderDodgeBonus += accessory.dodgeBonus;
+  }
+
+  // Check for STUN status on attacker - skip turn if stunned
+  const attackerStatus = isPlayer1 ? battle.player1StatusEffects : battle.player2StatusEffects;
+  const attackerStatusDuration = isPlayer1 ? battle.player1StatusDuration : battle.player2StatusDuration;
+
+  if ((attackerStatus & STATUS_STUN) != 0) {
+    // Attacker is stunned - skip damage phase
+    // Decrement status duration
+    if (isPlayer1) {
+      if (battle.player1StatusDuration > 0) {
+        battle.player1StatusDuration -= 1;
+        if (battle.player1StatusDuration == 0) {
+          battle.player1StatusEffects = STATUS_NONE;
+        }
+      }
+    } else {
+      if (battle.player2StatusDuration > 0) {
+        battle.player2StatusDuration -= 1;
+        if (battle.player2StatusDuration == 0) {
+          battle.player2StatusEffects = STATUS_NONE;
+        }
+      }
+    }
+    // Skip to end of turn
+    battle.turnNumber += 1;
+    battle.currentTurn = battle.currentTurn == 1 ? 2 : 1;
+    setBytes(battleKey(battleId), battle.serialize());
+    endNonReentrant();
+    generateEvent('TurnExecuted:' + battleId + ':Stunned');
+    return;
+  }
+
+  // damage base with equipment bonuses
+  const totalDamageMin = attacker.baseDamageMin + attackerDamageMinBonus;
+  const totalDamageMax = attacker.baseDamageMax + attackerDamageMaxBonus;
+  const dmgRange = totalDamageMax > totalDamageMin ? totalDamageMax - totalDamageMin : 0;
   let rollDamage = (simple_random(battle.turnNumber as u64 + Context.timestamp(), 3) % (dmgRange as u64 + 1)) as u16;
-  let baseDamage = attacker.baseDamageMin + rollDamage;
+  let baseDamage = totalDamageMin + rollDamage;
   // level bonus
   baseDamage = baseDamage + (attacker.level - 1) * 2;
 
-  // crit check
+  // Apply RAGE status - 50% damage increase
+  if ((attackerStatus & STATUS_RAGE) != 0) {
+    baseDamage = baseDamage + baseDamage / 2;
+  }
+
+  // crit check with equipment bonus
+  const totalCritChance = attacker.critChance + attackerCritBonus;
   const critRoll = (simple_random(battle.turnNumber as u64 + Context.timestamp(), 4) % 100) as u16;
   let damage = baseDamage as u64;
-  if (critRoll < attacker.critChance) {
+  if (critRoll < totalCritChance) {
     damage = damage * 2;
   }
 
-  // apply defense and dodge
-  if ((simple_random(battle.turnNumber as u64 + Context.timestamp(), 6) % 100) < defender.dodgeChance) {
+  // Apply combo multiplier if combo >= 3
+  const attackerCombo = isPlayer1 ? battle.player1ComboCount : battle.player2ComboCount;
+  if (attackerCombo >= 3) {
+    damage = damage + damage / 5; // 20% bonus
+  }
+
+  // apply defense and dodge with equipment bonus
+  const totalDodgeChance = defender.dodgeChance + defenderDodgeBonus;
+  let dodged = false;
+  if ((simple_random(battle.turnNumber as u64 + Context.timestamp(), 6) % 100) < totalDodgeChance) {
     damage = 0;
+    dodged = true;
   } else {
     damage = damage > defender.defense as u64 ? damage - defender.defense as u64 : 0;
   }
 
+  // Apply SHIELD status on defender - 30% damage reduction
+  const defenderStatus = isPlayer1 ? battle.player2StatusEffects : battle.player1StatusEffects;
+  if ((defenderStatus & STATUS_SHIELD) != 0 && damage > 0) {
+    damage = damage - damage * 30 / 100;
+  }
+
+  // Apply damage and update combo counters
   if (isPlayer1) {
     battle.player2Hp = battle.player2Hp > damage ? battle.player2Hp - damage : 0;
+    if (damage > 0 && !dodged) {
+      // Successful hit - increment attacker combo, reset defender combo
+      battle.player1ComboCount = battle.player1ComboCount < 255 ? battle.player1ComboCount + 1 : 255;
+      battle.player2ComboCount = 0;
+    } else {
+      // Miss or dodge - reset attacker combo
+      battle.player1ComboCount = 0;
+    }
   } else {
     battle.player1Hp = battle.player1Hp > damage ? battle.player1Hp - damage : 0;
+    if (damage > 0 && !dodged) {
+      battle.player2ComboCount = battle.player2ComboCount < 255 ? battle.player2ComboCount + 1 : 255;
+      battle.player1ComboCount = 0;
+    } else {
+      battle.player2ComboCount = 0;
+    }
+  }
+
+  // Apply POISON and BURN DOT effects
+  const p1Status = battle.player1StatusEffects;
+  const p2Status = battle.player2StatusEffects;
+
+  // Apply POISON to player 1 (5% max HP per turn)
+  if ((p1Status & STATUS_POISON) != 0) {
+    const dotDamage = c1.maxHp / 20; // 5%
+    battle.player1Hp = battle.player1Hp > dotDamage ? battle.player1Hp - dotDamage : 0;
+  }
+
+  // Apply BURN to player 1 (8% max HP per turn)
+  if ((p1Status & STATUS_BURN) != 0) {
+    const dotDamage = c1.maxHp * 8 / 100;
+    battle.player1Hp = battle.player1Hp > dotDamage ? battle.player1Hp - dotDamage : 0;
+  }
+
+  // Apply POISON to player 2 (5% max HP per turn)
+  if ((p2Status & STATUS_POISON) != 0) {
+    const dotDamage = c2.maxHp / 20; // 5%
+    battle.player2Hp = battle.player2Hp > dotDamage ? battle.player2Hp - dotDamage : 0;
+  }
+
+  // Apply BURN to player 2 (8% max HP per turn)
+  if ((p2Status & STATUS_BURN) != 0) {
+    const dotDamage = c2.maxHp * 8 / 100;
+    battle.player2Hp = battle.player2Hp > dotDamage ? battle.player2Hp - dotDamage : 0;
+  }
+
+  // Decrement status durations for both players
+  if (battle.player1StatusDuration > 0) {
+    battle.player1StatusDuration -= 1;
+    if (battle.player1StatusDuration == 0) {
+      battle.player1StatusEffects = STATUS_NONE;
+    }
+  }
+  if (battle.player2StatusDuration > 0) {
+    battle.player2StatusDuration -= 1;
+    if (battle.player2StatusDuration == 0) {
+      battle.player2StatusEffects = STATUS_NONE;
+    }
   }
 
   battle.turnNumber += 1;
@@ -1430,11 +1573,121 @@ export class Betslip {
   }
 }
 
+// Prop Bet Types
+export const PROP_BATTLE_DURATION: u8 = 0; // Battle ends in under X turns
+export const PROP_TOTAL_DAMAGE: u8 = 1; // Total damage dealt exceeds X
+export const PROP_CRITICAL_HIT: u8 = 2; // Will a crit occur
+export const PROP_WILDCARD_TRIGGER: u8 = 3; // Will wildcard trigger
+export const PROP_STATUS_APPLIED: u8 = 4; // Will status effect be applied
+export const PROP_COMBO_STREAK: u8 = 5; // Will 3+ combo be achieved
+
+// Prop Bet Definition
+export class PropBet {
+  propId: string;
+  battleId: string;
+  propType: u8; // PROP_BATTLE_DURATION, etc.
+  threshold: u64; // e.g., "under 10 turns" = 10
+  description: string;
+  yesPool: u128; // Total bets on "yes"
+  noPool: u128; // Total bets on "no"
+  isResolved: bool;
+  outcome: bool; // true = yes won, false = no won
+  createdAt: u64;
+
+  constructor() {
+    this.propId = '';
+    this.battleId = '';
+    this.propType = 0;
+    this.threshold = 0;
+    this.description = '';
+    this.yesPool = u128.Zero;
+    this.noPool = u128.Zero;
+    this.isResolved = false;
+    this.outcome = false;
+    this.createdAt = 0;
+  }
+
+  serialize(): StaticArray<u8> {
+    const a = new Args();
+    a.add(this.propId);
+    a.add(this.battleId);
+    a.add(this.propType as u32);
+    a.add(this.threshold);
+    a.add(this.description);
+    a.add(this.yesPool.toString());
+    a.add(this.noPool.toString());
+    a.add(this.isResolved);
+    a.add(this.outcome);
+    a.add(this.createdAt);
+    return a.serialize();
+  }
+
+  static deserialize(data: StaticArray<u8>): PropBet {
+    const a = new Args(data);
+    const p = new PropBet();
+    p.propId = a.nextString().unwrap();
+    p.battleId = a.nextString().unwrap();
+    p.propType = a.nextU32().unwrap() as u8;
+    p.threshold = a.nextU64().unwrap();
+    p.description = a.nextString().unwrap();
+    p.yesPool = u128.fromString(a.nextString().unwrap());
+    p.noPool = u128.fromString(a.nextString().unwrap());
+    p.isResolved = a.nextBool().unwrap();
+    p.outcome = a.nextBool().unwrap();
+    p.createdAt = a.nextU64().unwrap();
+    return p;
+  }
+}
+
+// Individual Prop Bet Ticket
+export class PropTicket {
+  propId: string;
+  bettor: Address;
+  amount: u128;
+  prediction: bool; // true = betting on "yes", false = betting on "no"
+  isClaimed: bool;
+  placedAt: u64;
+
+  constructor() {
+    this.propId = '';
+    this.bettor = new Address('0');
+    this.amount = u128.Zero;
+    this.prediction = false;
+    this.isClaimed = false;
+    this.placedAt = 0;
+  }
+
+  serialize(): StaticArray<u8> {
+    const a = new Args();
+    a.add(this.propId);
+    a.add(this.bettor.toString());
+    a.add(this.amount.toString());
+    a.add(this.prediction);
+    a.add(this.isClaimed);
+    a.add(this.placedAt);
+    return a.serialize();
+  }
+
+  static deserialize(data: StaticArray<u8>): PropTicket {
+    const a = new Args(data);
+    const t = new PropTicket();
+    t.propId = a.nextString().unwrap();
+    t.bettor = new Address(a.nextString().unwrap());
+    t.amount = u128.fromString(a.nextString().unwrap());
+    t.prediction = a.nextBool().unwrap();
+    t.isClaimed = a.nextBool().unwrap();
+    t.placedAt = a.nextU64().unwrap();
+    return t;
+  }
+}
+
 // Helpers to read/write storage keys
 function spoolKey(id: string): string { return SINGLE_POOL_PREFIX + id; }
 function sbetKey(poolId: string, bettor: string): string { return SINGLE_BET_PREFIX + poolId + ':' + bettor; }
 function mpoolKey(id: string): string { return MULTIPOOL_PREFIX + id; }
 function betslipKey(id: string): string { return BETSLIP_PREFIX + id; }
+function propBetKey(id: string): string { return 'propbet:' + id; }
+function propTicketKey(propId: string, bettor: string): string { return 'propticket:' + propId + ':' + bettor; }
 
 // Constructor
 export function prediction_constructor(_: StaticArray<u8>): void {
@@ -1997,12 +2250,216 @@ export function prediction_readBetslip(args: StaticArray<u8>): StaticArray<u8> {
   return getBytes(betslipKey(betslipId));
 }
 
+//////////////////////////////
+// Prop Bets Implementation
+//////////////////////////////
+
+// Create a prop bet for a battle
+export function propbet_createProp(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  onlyRole(ADMIN_ROLE); // Only admin can create prop bets
+
+  const ar = new Args(args);
+  const propId = ar.nextString().unwrap();
+  const battleId = ar.nextString().unwrap();
+  const propType = ar.nextU8().unwrap();
+  const threshold = ar.nextU64().unwrap();
+  const description = ar.nextString().unwrap();
+
+  assert(!hasKey(propBetKey(propId)), 'prop exists');
+  assert(hasKey(battleKey(battleId)), 'battle does not exist');
+
+  const prop = new PropBet();
+  prop.propId = propId;
+  prop.battleId = battleId;
+  prop.propType = propType;
+  prop.threshold = threshold;
+  prop.description = description;
+  prop.yesPool = u128.Zero;
+  prop.noPool = u128.Zero;
+  prop.isResolved = false;
+  prop.outcome = false;
+  prop.createdAt = Context.timestamp();
+
+  setBytes(propBetKey(propId), prop.serialize());
+  endNonReentrant();
+  generateEvent('PropBetCreated:' + propId + ':' + battleId);
+}
+
+// Place a bet on a prop (yes or no)
+export function propbet_placeBet(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+
+  const ar = new Args(args);
+  const propId = ar.nextString().unwrap();
+  const amount = ar.nextU64().unwrap();
+  const prediction = ar.nextBool().unwrap(); // true = yes, false = no
+  const tokenAddr = new Address(ar.nextString().unwrap());
+
+  assert(hasKey(propBetKey(propId)), 'prop does not exist');
+  const propData = getBytes(propBetKey(propId));
+  const prop = PropBet.deserialize(propData);
+
+  assert(!prop.isResolved, 'prop already resolved');
+  assert(amount > 0, 'amount must be positive');
+
+  const caller = Context.caller();
+  const ticketKey = propTicketKey(propId, caller.toString());
+  assert(!hasKey(ticketKey), 'already bet on this prop');
+
+  // Transfer tokens from bettor to contract
+  const token = new IERC20(tokenAddr);
+  token.transferFrom(caller, Context.callee(), amount);
+
+  // Create ticket
+  const ticket = new PropTicket();
+  ticket.propId = propId;
+  ticket.bettor = caller;
+  ticket.amount = u128.fromU64(amount);
+  ticket.prediction = prediction;
+  ticket.isClaimed = false;
+  ticket.placedAt = Context.timestamp();
+
+  setBytes(ticketKey, ticket.serialize());
+
+  // Update prop pools
+  if (prediction) {
+    prop.yesPool = prop.yesPool + u128.fromU64(amount);
+  } else {
+    prop.noPool = prop.noPool + u128.fromU64(amount);
+  }
+
+  setBytes(propBetKey(propId), prop.serialize());
+  incrementCounter(TOTAL_BETS_PLACED_KEY);
+  endNonReentrant();
+  generateEvent('PropBetPlaced:' + propId + ':' + caller.toString() + ':' + amount.toString());
+}
+
+// Resolve a prop bet (admin/settler only)
+export function propbet_resolveProp(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  onlyRole(SETTLER_ROLE);
+
+  const ar = new Args(args);
+  const propId = ar.nextString().unwrap();
+  const outcome = ar.nextBool().unwrap(); // true = yes won, false = no won
+
+  assert(hasKey(propBetKey(propId)), 'prop does not exist');
+  const propData = getBytes(propBetKey(propId));
+  const prop = PropBet.deserialize(propData);
+
+  assert(!prop.isResolved, 'already resolved');
+
+  // Verify battle is finished
+  assert(hasKey(battleKey(prop.battleId)), 'battle missing');
+  const battleData = getBytes(battleKey(prop.battleId));
+  const battle = Battle.deserialize(battleData);
+  assert(battle.isFinished, 'battle not finished');
+
+  prop.isResolved = true;
+  prop.outcome = outcome;
+
+  setBytes(propBetKey(propId), prop.serialize());
+  endNonReentrant();
+  generateEvent('PropBetResolved:' + propId + ':outcome=' + outcome.toString());
+}
+
+// Claim winnings from a prop bet
+export function propbet_claimProp(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+
+  const ar = new Args(args);
+  const propId = ar.nextString().unwrap();
+  const tokenAddr = new Address(ar.nextString().unwrap());
+
+  const caller = Context.caller();
+  const ticketKey = propTicketKey(propId, caller.toString());
+
+  assert(hasKey(ticketKey), 'no ticket found');
+  const ticketData = getBytes(ticketKey);
+  const ticket = PropTicket.deserialize(ticketData);
+
+  assert(!ticket.isClaimed, 'already claimed');
+  assert(hasKey(propBetKey(propId)), 'prop does not exist');
+
+  const propData = getBytes(propBetKey(propId));
+  const prop = PropBet.deserialize(propData);
+
+  assert(prop.isResolved, 'prop not resolved');
+
+  // Check if bettor won
+  const isWinner = ticket.prediction == prop.outcome;
+  if (!isWinner) {
+    // Mark as claimed even if lost
+    ticket.isClaimed = true;
+    setBytes(ticketKey, ticket.serialize());
+    incrementCounter(TOTAL_BETS_CLAIMED_KEY);
+    endNonReentrant();
+    generateEvent('PropBetClaimed:' + propId + ':' + caller.toString() + ':loss');
+    return;
+  }
+
+  // Calculate payout (proportional to winning pool share)
+  const winnerPool = prop.outcome ? prop.yesPool : prop.noPool;
+  const loserPool = prop.outcome ? prop.noPool : prop.yesPool;
+  const totalPool = prop.yesPool + prop.noPool;
+
+  // Payout = ticket amount + (ticket share of loser pool)
+  // Share = ticket.amount / winnerPool
+  // Payout = ticket.amount + (loserPool * ticket.amount / winnerPool)
+  let payoutU128 = ticket.amount;
+
+  if (winnerPool > u128.Zero) {
+    const loserShare = loserPool * ticket.amount / winnerPool;
+    payoutU128 = payoutU128 + loserShare;
+  }
+
+  const payoutU64 = payoutU128.toU64();
+
+  // Mark as claimed before transfer
+  ticket.isClaimed = true;
+  setBytes(ticketKey, ticket.serialize());
+
+  // Transfer payout
+  const token = new IERC20(tokenAddr);
+  const bal = token.balanceOf(Context.callee());
+  assert(bal >= payoutU64, 'contract insufficient funds');
+  token.transfer(caller, payoutU64);
+
+  incrementCounter(TOTAL_BETS_CLAIMED_KEY);
+  endNonReentrant();
+  generateEvent('PropBetClaimed:' + propId + ':' + caller.toString() + ':' + payoutU64.toString());
+}
+
+// View function to read prop bet state
+export function propbet_readProp(args: StaticArray<u8>): StaticArray<u8> {
+  const ar = new Args(args);
+  const propId = ar.nextString().unwrap();
+  if (!hasKey(propBetKey(propId))) return stringToBytes('null');
+  return getBytes(propBetKey(propId));
+}
+
+// View function to read prop ticket state
+export function propbet_readTicket(args: StaticArray<u8>): StaticArray<u8> {
+  const ar = new Args(args);
+  const propId = ar.nextString().unwrap();
+  const bettor = ar.nextString().unwrap();
+  const ticketKey = propTicketKey(propId, bettor);
+  if (!hasKey(ticketKey)) return stringToBytes('null');
+  return getBytes(ticketKey);
+}
+
 /*
   Notes & Next Steps:
   - The above provides core patterns and functions to implement the game and prediction/betting contracts on Massa AssemblyScript.
   - For production: replace simple_random with a secure VRF integration (Cadence equivalent on Massa if provided or oracle), implement treasury, refund/cancel flows,
     add robust multipool batch implementation, add exact serialization sizes, and write full unit tests and integration tests.
   - Also implement MP token support, careful gas and storage sizing, and off-chain indexer to assist in multipool accumulation and UI.
+  - Prop bets add exciting gameplay by allowing bets on battle events like turn duration, critical hits, combos, wildcards, and status effects.
 */
 
 /* End of artifact */
