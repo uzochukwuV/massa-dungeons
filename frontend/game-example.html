@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Massa Dungeons - Example Integration</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-4xl font-bold mb-8">Massa Dungeons - SDK Example</h1>
+
+        <!-- Configuration -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 class="text-2xl font-bold mb-4">1. Configuration</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Contract Address</label>
+                    <input id="contractAddress" type="text"
+                           placeholder="AS1234..."
+                           class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Secret Key</label>
+                    <input id="secretKey" type="password"
+                           placeholder="S1234..."
+                           class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                </div>
+                <button id="initBtn" class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded">
+                    Initialize SDK
+                </button>
+                <div id="initStatus" class="text-sm mt-2"></div>
+            </div>
+        </div>
+
+        <!-- Character Management -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 class="text-2xl font-bold mb-4">2. Character Management</h2>
+            <div class="space-y-4">
+                <div class="grid grid-cols-3 gap-4">
+                    <input id="charId" type="text" placeholder="Character ID"
+                           class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                    <select id="charClass" class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                        <option value="0">Warrior</option>
+                        <option value="1">Assassin</option>
+                        <option value="2">Mage</option>
+                    </select>
+                    <input id="charName" type="text" placeholder="Character Name"
+                           class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                </div>
+                <button id="createCharBtn" class="bg-green-600 hover:bg-green-700 px-6 py-2 rounded">
+                    Create Character
+                </button>
+                <button id="readCharBtn" class="bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded">
+                    Read Character
+                </button>
+                <div id="charOutput" class="bg-gray-700 rounded p-4 mt-4 text-sm font-mono"></div>
+            </div>
+        </div>
+
+        <!-- Battle System -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 class="text-2xl font-bold mb-4">3. Battle System</h2>
+            <div class="space-y-4">
+                <div class="grid grid-cols-3 gap-4">
+                    <input id="battleId" type="text" placeholder="Battle ID"
+                           class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                    <input id="player1Id" type="text" placeholder="Player 1 Char ID"
+                           class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                    <input id="player2Id" type="text" placeholder="Player 2 Char ID"
+                           class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                </div>
+                <button id="createBattleBtn" class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded">
+                    Create Battle
+                </button>
+                <button id="readBattleBtn" class="bg-orange-600 hover:bg-orange-700 px-6 py-2 rounded">
+                    Read Battle
+                </button>
+                <div class="grid grid-cols-2 gap-4 mt-4">
+                    <select id="battleAction" class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                        <option value="0">Basic Attack</option>
+                        <option value="1">Use Skill</option>
+                        <option value="2">Use Item</option>
+                        <option value="3">Defend</option>
+                    </select>
+                    <button id="executeTurnBtn" class="bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded">
+                        Execute Turn
+                    </button>
+                </div>
+                <div id="battleOutput" class="bg-gray-700 rounded p-4 mt-4 text-sm font-mono"></div>
+            </div>
+        </div>
+
+        <!-- Prediction Markets -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 class="text-2xl font-bold mb-4">4. Prediction Markets</h2>
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <input id="poolId" type="text" placeholder="Pool ID"
+                           class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                    <input id="poolBattleId" type="text" placeholder="Battle ID"
+                           class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                </div>
+                <input id="poolDesc" type="text" placeholder="Description"
+                       class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                <div class="grid grid-cols-2 gap-4">
+                    <input id="outcomeA" type="text" placeholder="Outcome A"
+                           class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                    <input id="outcomeB" type="text" placeholder="Outcome B"
+                           class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                </div>
+                <button id="createPoolBtn" class="bg-indigo-600 hover:bg-indigo-700 px-6 py-2 rounded">
+                    Create Pool
+                </button>
+                <button id="readPoolBtn" class="bg-pink-600 hover:bg-pink-700 px-6 py-2 rounded">
+                    Read Pool
+                </button>
+                <div class="grid grid-cols-3 gap-4 mt-4">
+                    <select id="betOutcome" class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                        <option value="0">Outcome A</option>
+                        <option value="1">Outcome B</option>
+                    </select>
+                    <input id="betAmount" type="number" placeholder="Bet Amount"
+                           class="bg-gray-700 border border-gray-600 rounded px-4 py-2">
+                    <button id="placeBetBtn" class="bg-green-600 hover:bg-green-700 px-6 py-2 rounded">
+                        Place Bet
+                    </button>
+                </div>
+                <div id="poolOutput" class="bg-gray-700 rounded p-4 mt-4 text-sm font-mono"></div>
+            </div>
+        </div>
+
+        <!-- Event Log -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 class="text-2xl font-bold mb-4">5. Event Log</h2>
+            <div id="eventLog" class="bg-gray-700 rounded p-4 max-h-64 overflow-y-auto text-sm font-mono">
+                Waiting for events...
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="bg-gray-800 rounded-lg p-6">
+            <h2 class="text-2xl font-bold mb-4">6. Statistics</h2>
+            <button id="getStatsBtn" class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded mb-4">
+                Refresh Stats
+            </button>
+            <div id="statsOutput" class="bg-gray-700 rounded p-4 text-sm font-mono"></div>
+        </div>
+    </div>
+
+    <!-- Load Massa Web3 -->
+    <script src="https://cdn.jsdelivr.net/npm/@massalabs/massa-web3@latest/bundle.js"></script>
+
+    <!-- Load Game SDK -->
+    <script src="game-web3.js"></script>
+
+    <!-- Application Logic -->
+    <script>
+        let sdk = null;
+
+        // Utility functions
+        function log(elementId, message, isError = false) {
+            const element = document.getElementById(elementId);
+            const color = isError ? 'text-red-400' : 'text-green-400';
+            element.innerHTML = `<div class="${color}">${JSON.stringify(message, null, 2)}</div>`;
+        }
+
+        function addEventLog(message) {
+            const eventLog = document.getElementById('eventLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'border-b border-gray-600 pb-2 mb-2';
+            entry.innerHTML = `<span class="text-gray-400">[${timestamp}]</span> ${message}`;
+            eventLog.insertBefore(entry, eventLog.firstChild);
+        }
+
+        // Initialize SDK
+        document.getElementById('initBtn').addEventListener('click', async () => {
+            try {
+                const contractAddress = document.getElementById('contractAddress').value;
+                const secretKey = document.getElementById('secretKey').value;
+
+                log('initStatus', 'Initializing...', false);
+
+                sdk = await initializeMassaDungeons(secretKey, contractAddress);
+
+                log('initStatus', {
+                    status: 'Connected',
+                    address: sdk.client.account.address,
+                    contract: contractAddress
+                }, false);
+
+                addEventLog('SDK initialized successfully');
+
+            } catch (error) {
+                log('initStatus', error.message, true);
+            }
+        });
+
+        // Character Management
+        document.getElementById('createCharBtn').addEventListener('click', async () => {
+            if (!sdk) return alert('Initialize SDK first');
+
+            try {
+                const charId = document.getElementById('charId').value;
+                const charClass = parseInt(document.getElementById('charClass').value);
+                const charName = document.getElementById('charName').value;
+
+                log('charOutput', 'Creating character...', false);
+
+                const result = await sdk.characters.createCharacter(charId, charClass, charName);
+
+                log('charOutput', {
+                    status: 'Created',
+                    operationId: result
+                }, false);
+
+                addEventLog(`Character created: ${charName} (${GameUtils.getClassName(charClass)})`);
+
+            } catch (error) {
+                log('charOutput', error.message, true);
+            }
+        });
+
+        document.getElementById('readCharBtn').addEventListener('click', async () => {
+            if (!sdk) return alert('Initialize SDK first');
+
+            try {
+                const charId = document.getElementById('charId').value;
+
+                log('charOutput', 'Reading character...', false);
+
+                const character = await sdk.characters.readCharacter(charId);
+
+                log('charOutput', {
+                    id: charId,
+                    name: character.name,
+                    class: GameUtils.getClassName(character.classType),
+                    level: character.level,
+                    hp: character.baseHp,
+                    attack: character.baseAttack,
+                    defense: character.baseDefense,
+                }, false);
+
+                addEventLog(`Character read: ${character.name}`);
+
+            } catch (error) {
+                log('charOutput', error.message, true);
+            }
+        });
+
+        // Battle System
+        document.getElementById('createBattleBtn').addEventListener('click', async () => {
+            if (!sdk) return alert('Initialize SDK first');
+
+            try {
+                const battleId = document.getElementById('battleId').value;
+                const player1 = document.getElementById('player1Id').value;
+                const player2 = document.getElementById('player2Id').value;
+
+                log('battleOutput', 'Creating battle...', false);
+
+                const result = await sdk.battles.createBattle(battleId, player1, player2);
+
+                log('battleOutput', {
+                    status: 'Created',
+                    operationId: result
+                }, false);
+
+                addEventLog(`Battle created: ${player1} vs ${player2}`);
+
+            } catch (error) {
+                log('battleOutput', error.message, true);
+            }
+        });
+
+        document.getElementById('readBattleBtn').addEventListener('click', async () => {
+            if (!sdk) return alert('Initialize SDK first');
+
+            try {
+                const battleId = document.getElementById('battleId').value;
+
+                log('battleOutput', 'Reading battle...', false);
+
+                const battle = await sdk.battles.readBattle(battleId);
+
+                log('battleOutput', {
+                    id: battleId,
+                    turn: battle.turnNumber,
+                    currentPlayer: battle.currentTurn,
+                    player1Hp: `${battle.player1Hp}/${battle.player1MaxHp}`,
+                    player2Hp: `${battle.player2Hp}/${battle.player2MaxHp}`,
+                    finished: battle.isFinished,
+                    winner: battle.winner,
+                }, false);
+
+                addEventLog(`Battle read: Turn ${battle.turnNumber}`);
+
+            } catch (error) {
+                log('battleOutput', error.message, true);
+            }
+        });
+
+        document.getElementById('executeTurnBtn').addEventListener('click', async () => {
+            if (!sdk) return alert('Initialize SDK first');
+
+            try {
+                const battleId = document.getElementById('battleId').value;
+                const action = parseInt(document.getElementById('battleAction').value);
+
+                log('battleOutput', 'Executing turn...', false);
+
+                const result = await sdk.battles.executeTurn(battleId, action);
+
+                log('battleOutput', {
+                    status: 'Turn executed',
+                    operationId: result
+                }, false);
+
+                addEventLog(`Turn executed in battle ${battleId}`);
+
+            } catch (error) {
+                log('battleOutput', error.message, true);
+            }
+        });
+
+        // Prediction Markets
+        document.getElementById('createPoolBtn').addEventListener('click', async () => {
+            if (!sdk) return alert('Initialize SDK first');
+
+            try {
+                const poolId = document.getElementById('poolId').value;
+                const battleId = document.getElementById('poolBattleId').value;
+                const desc = document.getElementById('poolDesc').value;
+                const outcomeA = document.getElementById('outcomeA').value;
+                const outcomeB = document.getElementById('outcomeB').value;
+
+                log('poolOutput', 'Creating pool...', false);
+
+                const result = await sdk.predictions.createPool(poolId, battleId, desc, outcomeA, outcomeB);
+
+                log('poolOutput', {
+                    status: 'Created',
+                    operationId: result
+                }, false);
+
+                addEventLog(`Pool created: ${desc}`);
+
+            } catch (error) {
+                log('poolOutput', error.message, true);
+            }
+        });
+
+        document.getElementById('readPoolBtn').addEventListener('click', async () => {
+            if (!sdk) return alert('Initialize SDK first');
+
+            try {
+                const poolId = document.getElementById('poolId').value;
+
+                log('poolOutput', 'Reading pool...', false);
+
+                const pool = await sdk.predictions.readPool(poolId);
+
+                log('poolOutput', {
+                    id: poolId,
+                    battleId: pool.battleId,
+                    description: pool.description,
+                    outcomeA: pool.outcomeA,
+                    outcomeB: pool.outcomeB,
+                    totalBetsA: GameUtils.fromContractUnits(pool.totalBetsA),
+                    totalBetsB: GameUtils.fromContractUnits(pool.totalBetsB),
+                    settled: pool.isSettled,
+                    winner: pool.winningOutcome,
+                }, false);
+
+                addEventLog(`Pool read: ${pool.description}`);
+
+            } catch (error) {
+                log('poolOutput', error.message, true);
+            }
+        });
+
+        document.getElementById('placeBetBtn').addEventListener('click', async () => {
+            if (!sdk) return alert('Initialize SDK first');
+
+            try {
+                const poolId = document.getElementById('poolId').value;
+                const outcome = parseInt(document.getElementById('betOutcome').value);
+                const amount = document.getElementById('betAmount').value;
+
+                log('poolOutput', 'Placing bet...', false);
+
+                const result = await sdk.predictions.placeBet(poolId, outcome, amount);
+
+                log('poolOutput', {
+                    status: 'Bet placed',
+                    operationId: result
+                }, false);
+
+                addEventLog(`Bet placed: ${amount} on outcome ${outcome}`);
+
+            } catch (error) {
+                log('poolOutput', error.message, true);
+            }
+        });
+
+        // Statistics
+        document.getElementById('getStatsBtn').addEventListener('click', async () => {
+            if (!sdk) return alert('Initialize SDK first');
+
+            try {
+                log('statsOutput', 'Loading stats...', false);
+
+                const stats = await sdk.battles.getStats();
+
+                log('statsOutput', {
+                    totalCharacters: stats.totalCharacters.toString(),
+                    totalBattles: stats.totalBattles.toString(),
+                    totalFinished: stats.totalFinished.toString(),
+                }, false);
+
+                addEventLog('Statistics refreshed');
+
+            } catch (error) {
+                log('statsOutput', error.message, true);
+            }
+        });
+
+        // Event listener for game events
+        document.addEventListener('game-event', (event) => {
+            const { parsed, timestamp } = event.detail;
+            addEventLog(`Event: ${parsed.type} - ${JSON.stringify(parsed)}`);
+        });
+    </script>
+</body>
+</html>
