@@ -19,14 +19,13 @@ import {
   generateEvent,
   callerHasWriteAccess,
   balance,
-  transferredCoins,
 } from '@massalabs/massa-as-sdk';
-import { Args, stringToBytes } from '@massalabs/as-types';
+import { Args, stringToBytes, bytesToString as bytesToStr } from '@massalabs/as-types';
 import { IERC20 } from '../interfaces/IERC20';
-import { u256 } from 'as-bignum/assembly';
+import { u256, u128 } from 'as-bignum/assembly';
 
 // Shared constants
-export const ODDS_SCALE_U128: u128 = 1_000_000; // fixed-point for odds (6 decimals)
+export const ODDS_SCALE_U128: u128 = u128.fromU64(1_000_000); // fixed-point for odds (6 decimals)
 export const BASIS_POINTS: u64 = 10000;
 export const DEFAULT_HOUSE_EDGE_BPS: u16 = 500; // 5%
 
@@ -40,29 +39,136 @@ export const PAUSED_KEY = 'paused';
 export const LOCKED_KEY = 'locked';
 export const AUTH_SETTLER_PREFIX = 'auth_settler:';
 
+// Game statistics keys
+export const CHARACTER_COUNT_KEY = 'character_count';
+export const BATTLE_COUNT_KEY = 'battle_count';
+export const TOTAL_BATTLES_FINISHED_KEY = 'total_battles_finished';
+export const SINGLE_POOL_COUNT_KEY = 'single_pool_count';
+export const MULTIPOOL_COUNT_KEY = 'multipool_count';
+export const TOTAL_BETS_PLACED_KEY = 'total_bets_placed';
+export const TOTAL_BETS_CLAIMED_KEY = 'total_bets_claimed';
+
+// ============================================================================
+// STORAGE HELPER FUNCTIONS - Consistent Key Management
+// ============================================================================
+
+/**
+ * Get a counter value from storage
+ */
+function getCounter(key: string): u64 {
+  const keyBytes = stringToBytes(key);
+  if (!Storage.has(keyBytes)) {
+    return 0;
+  }
+  return u64(parseInt(bytesToStr(Storage.get<StaticArray<u8>>(keyBytes))));
+}
+
+/**
+ * Set a counter value in storage
+ */
+function setCounter(key: string, value: u64): void {
+  Storage.set<StaticArray<u8>>(
+    stringToBytes(key),
+    stringToBytes(value.toString())
+  );
+}
+
+/**
+ * Increment a counter by 1 and return new value
+ */
+function incrementCounter(key: string): u64 {
+  const current = getCounter(key);
+  const next = current + 1;
+  setCounter(key, next);
+  return next;
+}
+
+/**
+ * Get a string value from storage
+ */
+function getString(key: string): string {
+  const keyBytes = stringToBytes(key);
+  if (!Storage.has(keyBytes)) {
+    return '';
+  }
+  return bytesToStr(Storage.get<StaticArray<u8>>(keyBytes));
+}
+
+/**
+ * Set a string value in storage
+ */
+function setString(key: string, value: string): void {
+  Storage.set<StaticArray<u8>>(
+    stringToBytes(key),
+    stringToBytes(value)
+  );
+}
+
+/**
+ * Get a boolean value from storage
+ */
+function getBool(key: string): bool {
+  return getString(key) === 'true';
+}
+
+/**
+ * Set a boolean value in storage
+ */
+function setBool(key: string, value: bool): void {
+  setString(key, value ? 'true' : 'false');
+}
+
+/**
+ * Delete a key from storage
+ */
+function deleteKey(key: string): void {
+  Storage.del(stringToBytes(key));
+}
+
+/**
+ * Check if a key exists in storage
+ */
+function hasKey(key: string): bool {
+  return Storage.has(stringToBytes(key));
+}
+
+/**
+ * Get bytes from storage
+ */
+function getBytes(key: string): StaticArray<u8> {
+  return Storage.get<StaticArray<u8>>(stringToBytes(key));
+}
+
+/**
+ * Set bytes in storage
+ */
+function setBytes(key: string, value: StaticArray<u8>): void {
+  Storage.set<StaticArray<u8>>(stringToBytes(key), value);
+}
+
 // Common helpers
 
 export function onlyRole(role: string): void {
   const caller = Context.caller();
   const roleKey = role + ':' + caller.toString();
-  assert(Storage.has(stringToBytes(roleKey)), `Access denied: missing role ${role}`);
+  assert(hasKey(roleKey), `Access denied: missing role ${role}`);
 }
 
 export function whenNotPaused(): void {
-  assert(!Storage.has(stringToBytes(PAUSED_KEY)), 'Contract paused');
+  assert(!getBool(PAUSED_KEY), 'Contract paused');
 }
 
 export function nonReentrant(): void {
-  assert(!Storage.has(stringToBytes(LOCKED_KEY)), 'Reentrancy guard');
-  Storage.set(stringToBytes(LOCKED_KEY), '1');
+  assert(!hasKey(LOCKED_KEY), 'Reentrancy guard');
+  setBool(LOCKED_KEY, true);
 }
 
 export function endNonReentrant(): void {
-  Storage.del(stringToBytes(LOCKED_KEY));
+  deleteKey(LOCKED_KEY);
 }
 
 export function storeBump(name: string, bump: u8): void { // placeholder (for parity with PDA concept)
-  Storage.set('bump:' + name, bump.toString());
+  setCounter('bump:' + name, bump as u64);
 }
 
 //////////////////////////////
@@ -142,15 +248,15 @@ export class Character {
     c.owner = new Address(a.nextString().unwrap());
     c.characterClass = a.nextU8().unwrap();
     c.name = a.nextString().unwrap();
-    c.level = a.nextU16().unwrap();
+    c.level = a.nextU32().unwrap() as u16;
     c.xp = a.nextU64().unwrap();
     c.maxHp = a.nextU64().unwrap();
     c.currentHp = a.nextU64().unwrap();
-    c.baseDamageMin = a.nextU16().unwrap();
-    c.baseDamageMax = a.nextU16().unwrap();
-    c.critChance = a.nextU16().unwrap();
-    c.dodgeChance = a.nextU16().unwrap();
-    c.defense = a.nextU16().unwrap();
+    c.baseDamageMin = a.nextU32().unwrap() as u16;
+    c.baseDamageMax = a.nextU32().unwrap() as u16;
+    c.critChance = a.nextU32().unwrap() as u16;
+    c.dodgeChance = a.nextU32().unwrap() as u16;
+    c.defense = a.nextU32().unwrap() as u16;
     c.totalWins = a.nextU32().unwrap();
     c.totalLosses = a.nextU32().unwrap();
     c.mmr = a.nextU64().unwrap();
@@ -258,8 +364,14 @@ function battleKey(id: string): string { return BATTLE_PREFIX + id; }
 export function game_constructor(_: StaticArray<u8>): void {
   assert(callerHasWriteAccess(), 'Must be deployment');
   const deployer = Context.caller();
-  Storage.set(ADMIN_ROLE + ':' + deployer.toString(), '1');
-  Storage.set('game_initialized', '1');
+  setString(ADMIN_ROLE + ':' + deployer.toString(), '1');
+  setBool('game_initialized', true);
+
+  // Initialize counters
+  setCounter(CHARACTER_COUNT_KEY, 0);
+  setCounter(BATTLE_COUNT_KEY, 0);
+  setCounter(TOTAL_BATTLES_FINISHED_KEY, 0);
+
   generateEvent('Game contract deployed');
 }
 
@@ -272,7 +384,7 @@ export function game_createCharacter(args: StaticArray<u8>): void {
   const classU8 = ar.nextU8().unwrap();
   const name = ar.nextString().unwrap();
 
-  assert(!Storage.has(stringToBytes(characterKey(id))), 'character exists');
+  assert(!hasKey(characterKey(id)), 'character exists');
 
   const char = new Character();
   const caller = Context.caller();
@@ -329,7 +441,8 @@ export function game_createCharacter(args: StaticArray<u8>): void {
       assert(false, 'invalid class');
   }
 
-  Storage.set(stringToBytes(characterKey(id)), char.serialize());
+  setBytes(characterKey(id), char.serialize());
+  incrementCounter(CHARACTER_COUNT_KEY);
   endNonReentrant();
   generateEvent('CharacterCreated:' + id);
 }
@@ -338,8 +451,8 @@ export function game_createCharacter(args: StaticArray<u8>): void {
 export function game_readCharacter(args: StaticArray<u8>): StaticArray<u8> {
   const ar = new Args(args);
   const id = ar.nextString().unwrap();
-  if (!Storage.has(stringToBytes(characterKey(id)))) return stringToBytes('null');
-  return Storage.get(stringToBytes(characterKey(id)));
+  if (!hasKey(characterKey(id))) return stringToBytes('null');
+  return getBytes(characterKey(id));
 }
 
 // create battle (scheduled)
@@ -352,12 +465,12 @@ export function game_createBattle(args: StaticArray<u8>): void {
   const char2Id = ar.nextString().unwrap();
   const startTs = ar.nextU64().unwrap(); // unix ms
 
-  assert(!Storage.has(stringToBytes(battleKey(battleId))), 'battle exists');
+  assert(!hasKey(battleKey(battleId)), 'battle exists');
 
   // load characters
-  assert(Storage.has(stringToBytes(characterKey(char1Id))) && Storage.has(stringToBytes(characterKey(char2Id))), 'characters missing');
-  const c1Data = Storage.get(stringToBytes(characterKey(char1Id)));
-  const c2Data = Storage.get(stringToBytes(characterKey(char2Id)));
+  assert(hasKey(characterKey(char1Id)) && hasKey(characterKey(char2Id)), 'characters missing');
+  const c1Data = getBytes(characterKey(char1Id));
+  const c2Data = getBytes(characterKey(char2Id));
   const c1 = Character.deserialize(c1Data);
   const c2 = Character.deserialize(c2Data);
 
@@ -385,7 +498,8 @@ export function game_createBattle(args: StaticArray<u8>): void {
   battle.wildcardPlayer1Decision = -1;
   battle.wildcardPlayer2Decision = -1;
 
-  Storage.set(stringToBytes(battleKey(battleId)), battle.serialize());
+  setBytes(battleKey(battleId), battle.serialize());
+  incrementCounter(BATTLE_COUNT_KEY);
   endNonReentrant();
   generateEvent('BattleCreated:' + battleId);
 }
@@ -411,8 +525,8 @@ export function game_executeTurn(args: StaticArray<u8>): void {
   const stance = ar.nextU8().unwrap(); // 0..4
   const useSpecial = ar.nextBool().unwrap();
 
-  assert(Storage.has(stringToBytes(battleKey(battleId))), 'battle missing');
-  const bData = Storage.get(stringToBytes(battleKey(battleId)));
+  assert(hasKey(battleKey(battleId)), 'battle missing');
+  const bData = getBytes(battleKey(battleId));
   const battle = Battle.deserialize(bData);
 
   assert(!battle.isFinished, 'battle finished');
@@ -431,7 +545,7 @@ export function game_executeTurn(args: StaticArray<u8>): void {
   // apply DOTs not implemented in this simplified snippet; you can add similar to AMM example
 
   // wildcard check (prototype uses simple_random, insecure)
-  const wildcardChance = (isPlayer1 && attackerCharId == 'Trickster') ? 25 : 10; // simple heuristic
+  const wildcardChance: u64 = (isPlayer1 && attackerCharId == 'Trickster') ? 25 : 10; // simple heuristic
   const roll = simple_random(battle.turnNumber as u64 + battle.createdAt, 1) % 100;
   if (roll < wildcardChance && !battle.wildcardActive) {
     // set wildcard
@@ -440,7 +554,7 @@ export function game_executeTurn(args: StaticArray<u8>): void {
     battle.wildcardDecisionDeadline = Context.timestamp() + 10000; // 10s proto
     battle.wildcardPlayer1Decision = -1;
     battle.wildcardPlayer2Decision = -1;
-    Storage.set(stringToBytes(battleKey(battleId)), battle.serialize());
+    setBytes(battleKey(battleId), battle.serialize());
     endNonReentrant();
     generateEvent('WildcardTriggered:' + battleId);
     return;
@@ -448,8 +562,8 @@ export function game_executeTurn(args: StaticArray<u8>): void {
 
   // compute damage (simplified)
   // load characters to get stats
-  const c1Raw = Storage.get(stringToBytes(characterKey(battle.player1Char.toString())));
-  const c2Raw = Storage.get(stringToBytes(characterKey(battle.player2Char.toString())));
+  const c1Raw = getBytes(characterKey(battle.player1Char.toString()));
+  const c2Raw = getBytes(characterKey(battle.player2Char.toString()));
   const c1 = Character.deserialize(c1Raw);
   const c2 = Character.deserialize(c2Raw);
 
@@ -493,7 +607,7 @@ export function game_executeTurn(args: StaticArray<u8>): void {
     generateEvent('BattleEnded:' + battleId);
   }
 
-  Storage.set(stringToBytes(battleKey(battleId)), battle.serialize());
+  setBytes(battleKey(battleId), battle.serialize());
   endNonReentrant();
   generateEvent('TurnExecuted:' + battleId);
 }
@@ -507,8 +621,8 @@ export function game_decideWildcard(args: StaticArray<u8>): void {
   const accept = ar.nextBool().unwrap();
   const playerCharId = ar.nextString().unwrap();
 
-  assert(Storage.has(stringToBytes(battleKey(battleId))), 'battle missing');
-  const bData = Storage.get(stringToBytes(battleKey(battleId)));
+  assert(hasKey(battleKey(battleId)), 'battle missing');
+  const bData = getBytes(battleKey(battleId));
   const battle = Battle.deserialize(bData);
 
   assert(battle.wildcardActive, 'no wildcard active');
@@ -545,7 +659,7 @@ export function game_decideWildcard(args: StaticArray<u8>): void {
     battle.wildcardPlayer2Decision = -1;
   }
 
-  Storage.set(stringToBytes(battleKey(battleId)), battle.serialize());
+  setBytes(battleKey(battleId), battle.serialize());
   endNonReentrant();
   generateEvent('WildcardDecision:' + battleId);
 }
@@ -557,16 +671,16 @@ export function game_finalizeBattle(args: StaticArray<u8>): void {
   const ar = new Args(args);
   const battleId = ar.nextString().unwrap();
 
-  assert(Storage.has(stringToBytes(battleKey(battleId))), 'battle missing');
-  const bData = Storage.get(stringToBytes(battleKey(battleId)));
+  assert(hasKey(battleKey(battleId)), 'battle missing');
+  const bData = getBytes(battleKey(battleId));
   const battle = Battle.deserialize(bData);
 
   assert(battle.isFinished, 'not finished');
   assert(battle.winner != 0, 'no winner');
 
   // update characters' stats (load & modify)
-  const c1Raw = Storage.get(stringToBytes(characterKey(battle.player1Char.toString())));
-  const c2Raw = Storage.get(stringToBytes(characterKey(battle.player2Char.toString())));
+  const c1Raw = getBytes(characterKey(battle.player1Char.toString()));
+  const c2Raw = getBytes(characterKey(battle.player2Char.toString()));
   const c1 = Character.deserialize(c1Raw);
   const c2 = Character.deserialize(c2Raw);
 
@@ -581,8 +695,11 @@ export function game_finalizeBattle(args: StaticArray<u8>): void {
   c1.currentHp = c1.maxHp;
   c2.currentHp = c2.maxHp;
 
-  Storage.set(stringToBytes(characterKey(battle.player1Char.toString())), c1.serialize());
-  Storage.set(stringToBytes(characterKey(battle.player2Char.toString())), c2.serialize());
+  setBytes(characterKey(battle.player1Char.toString()), c1.serialize());
+  setBytes(characterKey(battle.player2Char.toString()), c2.serialize());
+
+  // Increment finished battles counter
+  incrementCounter(TOTAL_BATTLES_FINISHED_KEY);
 
   // Emit an event with winner info: Prediction contract can listen to this event or be authorized to call settle
   generateEvent('BattleFinalized:' + battleId + ':winner=' + battle.winner.toString());
@@ -595,7 +712,7 @@ export function game_setPaused(args: StaticArray<u8>): void {
   onlyRole(PAUSER_ROLE);
   const ar = new Args(args);
   const paused = ar.nextBool().unwrap();
-  if (paused) Storage.set(stringToBytes(PAUSED_KEY), '1'); else Storage.del(stringToBytes(PAUSED_KEY));
+  setBool(PAUSED_KEY, paused);
   generateEvent('Game pause toggled');
 }
 
@@ -603,8 +720,127 @@ export function game_grantSettler(args: StaticArray<u8>): void {
   onlyRole(ADMIN_ROLE);
   const ar = new Args(args);
   const addr = ar.nextString().unwrap();
-  Storage.set(stringToBytes(AUTH_SETTLER_PREFIX + addr), '1');
+  setString(AUTH_SETTLER_PREFIX + addr, '1');
   generateEvent('Game settler granted:' + addr);
+}
+
+// View function: get statistics
+export function game_getStats(_: StaticArray<u8>): StaticArray<u8> {
+  const result = new Args();
+  result.add(getCounter(CHARACTER_COUNT_KEY));
+  result.add(getCounter(BATTLE_COUNT_KEY));
+  result.add(getCounter(TOTAL_BATTLES_FINISHED_KEY));
+  return result.serialize();
+}
+
+// Enhanced Features: Character Upgrades
+export function game_upgradeCharacter(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  const ar = new Args(args);
+  const charId = ar.nextString().unwrap();
+  const upgradeType = ar.nextU8().unwrap(); // 0=HP, 1=Damage, 2=Crit, 3=Dodge
+
+  assert(hasKey(characterKey(charId)), 'character not found');
+  const charData = getBytes(characterKey(charId));
+  const char = Character.deserialize(charData);
+
+  const caller = Context.caller();
+  assert(caller.toString() == char.owner.toString(), 'not owner');
+
+  // XP requirement for upgrade (example: 100 XP per upgrade)
+  const xpCost: u64 = 100;
+  assert(char.xp >= xpCost, 'insufficient XP');
+
+  char.xp -= xpCost;
+
+  // Apply upgrade based on type
+  switch (upgradeType) {
+    case 0: // HP upgrade
+      char.maxHp += 10;
+      char.currentHp = char.maxHp;
+      break;
+    case 1: // Damage upgrade
+      char.baseDamageMin += 2;
+      char.baseDamageMax += 3;
+      break;
+    case 2: // Crit upgrade
+      if (char.critChance < 50) char.critChance += 5;
+      break;
+    case 3: // Dodge upgrade
+      if (char.dodgeChance < 40) char.dodgeChance += 5;
+      break;
+    default:
+      assert(false, 'invalid upgrade type');
+  }
+
+  setBytes(characterKey(charId), char.serialize());
+  endNonReentrant();
+  generateEvent('CharacterUpgraded:' + charId + ':type=' + upgradeType.toString());
+}
+
+// Grant XP to character (called internally or by admin)
+export function game_grantXP(args: StaticArray<u8>): void {
+  onlyRole(ADMIN_ROLE); // In production, this could be called automatically after battles
+  const ar = new Args(args);
+  const charId = ar.nextString().unwrap();
+  const xpAmount = ar.nextU64().unwrap();
+
+  assert(hasKey(characterKey(charId)), 'character not found');
+  const charData = getBytes(characterKey(charId));
+  const char = Character.deserialize(charData);
+
+  char.xp += xpAmount;
+
+  // Level up logic
+  const xpForNextLevel = (char.level as u64) * 200; // Example: level * 200 XP needed
+  if (char.xp >= xpForNextLevel) {
+    char.level += 1;
+    char.xp -= xpForNextLevel;
+    // Grant bonus stats on level up
+    char.maxHp += 5;
+    char.currentHp = char.maxHp;
+    char.baseDamageMin += 1;
+    char.baseDamageMax += 2;
+    generateEvent('CharacterLevelUp:' + charId + ':level=' + char.level.toString());
+  }
+
+  setBytes(characterKey(charId), char.serialize());
+  generateEvent('XPGranted:' + charId + ':amount=' + xpAmount.toString());
+}
+
+// Heal character (costs some resource or cooldown)
+export function game_healCharacter(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  const ar = new Args(args);
+  const charId = ar.nextString().unwrap();
+
+  assert(hasKey(characterKey(charId)), 'character not found');
+  const charData = getBytes(characterKey(charId));
+  const char = Character.deserialize(charData);
+
+  const caller = Context.caller();
+  assert(caller.toString() == char.owner.toString(), 'not owner');
+
+  // Restore HP to max
+  char.currentHp = char.maxHp;
+
+  setBytes(characterKey(charId), char.serialize());
+  endNonReentrant();
+  generateEvent('CharacterHealed:' + charId);
+}
+
+// Get character leaderboard (top N characters by MMR)
+export function game_getLeaderboard(args: StaticArray<u8>): StaticArray<u8> {
+  // Note: This is a simplified version. In production, maintain a sorted index
+  const ar = new Args(args);
+  const topN = ar.nextU32().unwrap();
+
+  // Return empty for now - implement with indexing service or iterator
+  const result = new Args();
+  result.add('Leaderboard: implement with indexer');
+  return result.serialize();
 }
 
 //////////////////////////////
@@ -886,8 +1122,15 @@ function betslipKey(id: string): string { return BETSLIP_PREFIX + id; }
 export function prediction_constructor(_: StaticArray<u8>): void {
   assert(callerHasWriteAccess(), 'must be deployer');
   const deployer = Context.caller();
-  Storage.set(ADMIN_ROLE + ':' + deployer.toString(), '1');
-  Storage.set('prediction_initialized', '1');
+  setString(ADMIN_ROLE + ':' + deployer.toString(), '1');
+  setBool('prediction_initialized', true);
+
+  // Initialize counters
+  setCounter(SINGLE_POOL_COUNT_KEY, 0);
+  setCounter(MULTIPOOL_COUNT_KEY, 0);
+  setCounter(TOTAL_BETS_PLACED_KEY, 0);
+  setCounter(TOTAL_BETS_CLAIMED_KEY, 0);
+
   generateEvent('Prediction contract deployed');
 }
 
@@ -902,7 +1145,7 @@ export function prediction_createSinglePool(args: StaticArray<u8>): void {
   const tokenAddr = new Address(ar.nextString().unwrap());
   const closeTs = ar.nextU64().unwrap();
 
-  assert(!Storage.has(stringToBytes(spoolKey(poolId))), 'pool exists');
+  assert(!hasKey(spoolKey(poolId)), 'pool exists');
   // Optionally enforce closeTs <= battle.startTs via cross-contract call to game. For now assume creator supplies consistent time.
 
   const p = new SinglePool();
@@ -921,7 +1164,8 @@ export function prediction_createSinglePool(args: StaticArray<u8>): void {
   p.winningOutcome = -1;
   p.createdAt = Context.timestamp();
 
-  Storage.set(stringToBytes(spoolKey(poolId)), p.serialize());
+  setBytes(spoolKey(poolId), p.serialize());
+  incrementCounter(SINGLE_POOL_COUNT_KEY);
   endNonReentrant();
   generateEvent('SinglePoolCreated:' + poolId);
 }
@@ -937,8 +1181,8 @@ export function prediction_placeSingleBet(args: StaticArray<u8>): void {
   const outcome = ar.nextI32().unwrap();
   const amount = ar.nextU64().unwrap();
 
-  assert(Storage.has(stringToBytes(spoolKey(poolId))), 'pool missing');
-  const pRaw = Storage.get(stringToBytes(spoolKey(poolId)));
+  assert(hasKey(spoolKey(poolId)), 'pool missing');
+  const pRaw = getBytes(spoolKey(poolId));
   const pool = SinglePool.deserialize(pRaw);
   assert(!pool.isClosed, 'pool closed');
   assert(Context.timestamp() < pool.closeTs, 'betting closed');
@@ -967,8 +1211,9 @@ export function prediction_placeSingleBet(args: StaticArray<u8>): void {
   bet.isClaimed = false;
   bet.placedAt = Context.timestamp();
 
-  Storage.set(stringToBytes(spoolKey(poolId)), pool.serialize());
-  Storage.set(stringToBytes(sbetKey(poolId, caller.toString())), bet.serialize());
+  setBytes(spoolKey(poolId), pool.serialize());
+  setBytes(sbetKey(poolId, caller.toString()), bet.serialize());
+  incrementCounter(TOTAL_BETS_PLACED_KEY);
   endNonReentrant();
   generateEvent('SingleBetPlaced:' + poolId + ':' + caller.toString());
 }
@@ -980,8 +1225,8 @@ export function prediction_closeSinglePool(args: StaticArray<u8>): void {
   const ar = new Args(args);
   const poolId = ar.nextString().unwrap();
 
-  assert(Storage.has(stringToBytes(spoolKey(poolId))), 'pool not found');
-  const pRaw = Storage.get(stringToBytes(spoolKey(poolId)));
+  assert(hasKey(spoolKey(poolId)), 'pool not found');
+  const pRaw = getBytes(spoolKey(poolId));
   const pool = SinglePool.deserialize(pRaw);
   assert(!pool.isClosed, 'already closed');
   assert(Context.timestamp() >= pool.closeTs, 'too early to close');
@@ -1004,14 +1249,14 @@ export function prediction_closeSinglePool(args: StaticArray<u8>): void {
     }
   }
 
-  Storage.set(stringToBytes(spoolKey(poolId)), pool.serialize());
+  setBytes(spoolKey(poolId), pool.serialize());
   endNonReentrant();
   generateEvent('SinglePoolClosed:' + poolId);
 }
 
 // Authorization helper: a settler is authorized if Storage has auth_settler:<addr>
 function isAuthorizedSettler(addr: Address): bool {
-  return Storage.has(stringToBytes(AUTH_SETTLER_PREFIX + addr.toString()));
+  return hasKey(AUTH_SETTLER_PREFIX + addr.toString());
 }
 
 // settle single pool (only by authorized settler - register Game contract or oracle)
@@ -1022,8 +1267,8 @@ export function prediction_settleSinglePool(args: StaticArray<u8>): void {
   const poolId = ar.nextString().unwrap();
   const winningOutcome = ar.nextI32().unwrap(); // 0 A, 1 B
 
-  assert(Storage.has(stringToBytes(spoolKey(poolId))), 'pool missing');
-  const pRaw = Storage.get(stringToBytes(spoolKey(poolId)));
+  assert(hasKey(spoolKey(poolId)), 'pool missing');
+  const pRaw = getBytes(spoolKey(poolId));
   const pool = SinglePool.deserialize(pRaw);
 
   assert(pool.isClosed, 'pool not closed');
@@ -1035,7 +1280,7 @@ export function prediction_settleSinglePool(args: StaticArray<u8>): void {
 
   pool.isSettled = true;
   pool.winningOutcome = winningOutcome;
-  Storage.set(stringToBytes(spoolKey(poolId)), pool.serialize());
+  setBytes(spoolKey(poolId), pool.serialize());
   endNonReentrant();
   generateEvent('SinglePoolSettled:' + poolId + ':winner=' + winningOutcome.toString());
 }
@@ -1050,16 +1295,17 @@ export function prediction_claimSingleBet(args: StaticArray<u8>): void {
   const bettor = new Address(bettorAddrStr);
 
   assert(Storage.has(stringToBytes(spoolKey(poolId))), 'pool missing');
-  const pool = SinglePool.deserialize(Storage.get(stringToBytes(spoolKey(poolId))));
+  const pool = SinglePool.deserialize(getBytes(spoolKey(poolId)));
   assert(pool.isSettled, 'pool not settled');
   const betKey = sbetKey(poolId, bettor.toString());
-  assert(Storage.has(stringToBytes(betKey)), 'bet not found');
-  const bet = SingleBet.deserialize(Storage.get(stringToBytes(betKey)));
+  assert(hasKey(betKey), 'bet not found');
+  const bet = SingleBet.deserialize(getBytes(betKey));
   assert(!bet.isClaimed, 'already claimed');
   // if losing bet, mark claimed and exit
   if (bet.outcome != pool.winningOutcome) {
     bet.isClaimed = true;
-    Storage.set(stringToBytes(betKey), bet.serialize());
+    setBytes(betKey, bet.serialize());
+    incrementCounter(TOTAL_BETS_CLAIMED_KEY);
     endNonReentrant();
     generateEvent('SingleBetClaimed:' + poolId + ':' + bettor.toString() + ':payout=0');
     return;
@@ -1077,7 +1323,7 @@ export function prediction_claimSingleBet(args: StaticArray<u8>): void {
 
   // mark claimed before transfer (reentrancy guard)
   bet.isClaimed = true;
-  Storage.set(stringToBytes(betKey), bet.serialize());
+  setBytes(betKey, bet.serialize());
 
   // transfer ERC20 tokens from contract to bettor
   const tokenContract = new IERC20(pool.token);
@@ -1085,6 +1331,9 @@ export function prediction_claimSingleBet(args: StaticArray<u8>): void {
   const bal = tokenContract.balanceOf(Context.callee());
   assert(bal >= u256.fromString(payout), 'contract insufficient funds');
   tokenContract.transfer(bettor, u256.fromString(payout));
+
+  // Increment claimed bets counter
+  incrementCounter(TOTAL_BETS_CLAIMED_KEY);
 
   // Optionally send house fee to treasury (omitted: implement treasury)
   endNonReentrant();
@@ -1096,7 +1345,7 @@ export function prediction_setAuthorizedSettler(args: StaticArray<u8>): void {
   onlyRole(ADMIN_ROLE);
   const ar = new Args(args);
   const addr = ar.nextString().unwrap();
-  Storage.set(stringToBytes(AUTH_SETTLER_PREFIX + addr), '1');
+  setString(AUTH_SETTLER_PREFIX + addr, '1');
   generateEvent('SettlerAuthorized:' + addr);
 }
 
@@ -1116,8 +1365,8 @@ export function prediction_setAuthorizedSettler(args: StaticArray<u8>): void {
 export function prediction_readSinglePool(args: StaticArray<u8>): StaticArray<u8> {
   const ar = new Args(args);
   const poolId = ar.nextString().unwrap();
-  if (!Storage.has(stringToBytes(spoolKey(poolId)))) return stringToBytes('null');
-  return Storage.get(stringToBytes(spoolKey(poolId)));
+  if (!hasKey(spoolKey(poolId))) return stringToBytes('null');
+  return getBytes(spoolKey(poolId));
 }
 
 export function prediction_readBet(args: StaticArray<u8>): StaticArray<u8> {
@@ -1125,8 +1374,8 @@ export function prediction_readBet(args: StaticArray<u8>): StaticArray<u8> {
   const poolId = ar.nextString().unwrap();
   const bettor = ar.nextString().unwrap();
   const key = sbetKey(poolId, bettor);
-  if (!Storage.has(stringToBytes(key))) return stringToBytes('null');
-  return Storage.get(stringToBytes(key));
+  if (!hasKey(key)) return stringToBytes('null');
+  return getBytes(key);
 }
 
 // Admin pause
@@ -1134,8 +1383,250 @@ export function prediction_setPaused(args: StaticArray<u8>): void {
   onlyRole(PAUSER_ROLE);
   const ar = new Args(args);
   const paused = ar.nextBool().unwrap();
-  if (paused) Storage.set(stringToBytes(PAUSED_KEY), '1'); else Storage.del(stringToBytes(PAUSED_KEY));
+  setBool(PAUSED_KEY, paused);
   generateEvent('Prediction pause toggled');
+}
+
+// View function: get prediction statistics
+export function prediction_getStats(_: StaticArray<u8>): StaticArray<u8> {
+  const result = new Args();
+  result.add(getCounter(SINGLE_POOL_COUNT_KEY));
+  result.add(getCounter(MULTIPOOL_COUNT_KEY));
+  result.add(getCounter(TOTAL_BETS_PLACED_KEY));
+  result.add(getCounter(TOTAL_BETS_CLAIMED_KEY));
+  return result.serialize();
+}
+
+//////////////////////////////
+// Multipool/Parlay Implementation
+//////////////////////////////
+
+// Create multipool
+export function prediction_createMultipool(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  const ar = new Args(args);
+  const multipoolId = ar.nextString().unwrap();
+  const tokenAddr = new Address(ar.nextString().unwrap());
+
+  assert(!hasKey(mpoolKey(multipoolId)), 'multipool exists');
+
+  const mp = new Multipool();
+  mp.multipoolId = multipoolId;
+  mp.token = tokenAddr;
+  mp.totalPool = 0;
+  mp.totalWeightFP = 0;
+  mp.totalWinnerWeightFP = 0;
+  mp.isFinalized = false;
+  mp.houseEdgeBps = DEFAULT_HOUSE_EDGE_BPS;
+  mp.createdAt = Context.timestamp();
+
+  setBytes(mpoolKey(multipoolId), mp.serialize());
+  incrementCounter(MULTIPOOL_COUNT_KEY);
+  endNonReentrant();
+  generateEvent('MultipoolCreated:' + multipoolId);
+}
+
+// Place multibet (parlay bet across multiple pools)
+export function prediction_placeMultibet(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  const ar = new Args(args);
+  const betslipId = ar.nextString().unwrap();
+  const multipoolId = ar.nextString().unwrap();
+  const amount = ar.nextU64().unwrap();
+  const selectionsCount = ar.nextU32().unwrap();
+
+  // Parse selections
+  const selections: string[] = [];
+  let combinedOddsFP: u128 = u128.fromU64(ODDS_SCALE_U128 as u64); // Start with 1.0 in FP
+
+  for (let i: u32 = 0; i < selectionsCount; i++) {
+    const poolId = ar.nextString().unwrap();
+    const outcome = ar.nextI32().unwrap();
+
+    // Verify pool exists and is closed (odds finalized)
+    assert(hasKey(spoolKey(poolId)), 'pool ' + poolId + ' missing');
+    const pool = SinglePool.deserialize(getBytes(spoolKey(poolId)));
+    assert(pool.isClosed, 'pool ' + poolId + ' not closed');
+
+    // Get odds for this outcome
+    const oddsFP = outcome == 0 ? pool.outcomeAOddsFP : pool.outcomeBOddsFP;
+    assert(oddsFP > 0, 'invalid odds for pool ' + poolId);
+
+    // Multiply combined odds (FP math: multiply then divide by scale)
+    combinedOddsFP = combinedOddsFP * oddsFP / u128.fromU64(ODDS_SCALE_U128 as u64);
+
+    // Store selection
+    const sel = new BetslipSelection();
+    sel.poolId = poolId;
+    sel.outcome = outcome;
+    sel.oddsFP = oddsFP;
+    selections.push(sel.toString());
+  }
+
+  // Transfer tokens from bettor
+  const caller = Context.caller();
+  assert(hasKey(mpoolKey(multipoolId)), 'multipool missing');
+  const mp = Multipool.deserialize(getBytes(mpoolKey(multipoolId)));
+
+  const token = new IERC20(mp.token);
+  const allowance = token.allowance(caller, Context.callee());
+  assert(allowance.toU64() >= amount, 'allowance low');
+  const bal = token.balanceOf(caller);
+  assert(bal.toU64() >= amount, 'insufficient balance');
+
+  token.transferFrom(caller, Context.callee(), u256.fromU64(amount));
+
+  // Create betslip
+  const betslip = new Betslip();
+  betslip.betslipId = betslipId;
+  betslip.bettor = caller;
+  betslip.multipoolId = multipoolId;
+  betslip.amount = u128.fromU64(amount);
+  betslip.selections = selections;
+  betslip.combinedOddsFP = combinedOddsFP;
+  // Weight = amount * combinedOddsFP (simplified parlay weight)
+  betslip.weightFP = u128.fromU64(amount) * combinedOddsFP / u128.fromU64(ODDS_SCALE_U128 as u64);
+  betslip.isWinner = false;
+  betslip.isClaimed = false;
+  betslip.isAccounted = false;
+  betslip.placedAt = Context.timestamp();
+
+  // Update multipool totals
+  mp.totalPool = mp.totalPool + u128.fromU64(amount);
+  mp.totalWeightFP = mp.totalWeightFP + betslip.weightFP;
+
+  setBytes(mpoolKey(multipoolId), mp.serialize());
+  setBytes(betslipKey(betslipId), betslip.serialize());
+  incrementCounter(TOTAL_BETS_PLACED_KEY);
+  endNonReentrant();
+  generateEvent('MultibetPlaced:' + betslipId + ':multipool=' + multipoolId);
+}
+
+// Check if betslip is winner (all selections correct)
+export function prediction_checkBetslipWinner(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  const ar = new Args(args);
+  const betslipId = ar.nextString().unwrap();
+
+  assert(hasKey(betslipKey(betslipId)), 'betslip missing');
+  const betslip = Betslip.deserialize(getBytes(betslipKey(betslipId)));
+  assert(!betslip.isAccounted, 'already accounted');
+
+  // Check all selections
+  let isWinner = true;
+  for (let i = 0; i < betslip.selections.length; i++) {
+    const sel = BetslipSelection.fromString(betslip.selections[i]);
+
+    assert(hasKey(spoolKey(sel.poolId)), 'pool missing');
+    const pool = SinglePool.deserialize(getBytes(spoolKey(sel.poolId)));
+    assert(pool.isSettled, 'pool not settled');
+
+    if (pool.winningOutcome != sel.outcome) {
+      isWinner = false;
+      break;
+    }
+  }
+
+  betslip.isWinner = isWinner;
+  betslip.isAccounted = true;
+
+  // If winner, add to multipool winner weight
+  if (isWinner) {
+    assert(hasKey(mpoolKey(betslip.multipoolId)), 'multipool missing');
+    const mp = Multipool.deserialize(getBytes(mpoolKey(betslip.multipoolId)));
+    mp.totalWinnerWeightFP = mp.totalWinnerWeightFP + betslip.weightFP;
+    setBytes(mpoolKey(betslip.multipoolId), mp.serialize());
+  }
+
+  setBytes(betslipKey(betslipId), betslip.serialize());
+  endNonReentrant();
+  generateEvent('BetslipChecked:' + betslipId + ':winner=' + (isWinner ? '1' : '0'));
+}
+
+// Finalize multipool (after all betslips checked)
+export function prediction_finalizeMultipool(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  onlyRole(ADMIN_ROLE); // Or authorized settler
+  const ar = new Args(args);
+  const multipoolId = ar.nextString().unwrap();
+
+  assert(hasKey(mpoolKey(multipoolId)), 'multipool missing');
+  const mp = Multipool.deserialize(getBytes(mpoolKey(multipoolId)));
+  assert(!mp.isFinalized, 'already finalized');
+
+  mp.isFinalized = true;
+  setBytes(mpoolKey(multipoolId), mp.serialize());
+  endNonReentrant();
+  generateEvent('MultipoolFinalized:' + multipoolId);
+}
+
+// Claim multibet winnings
+export function prediction_claimMultibet(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  const ar = new Args(args);
+  const betslipId = ar.nextString().unwrap();
+
+  assert(hasKey(betslipKey(betslipId)), 'betslip missing');
+  const betslip = Betslip.deserialize(getBytes(betslipKey(betslipId)));
+  assert(!betslip.isClaimed, 'already claimed');
+  assert(betslip.isAccounted, 'not yet accounted');
+
+  assert(hasKey(mpoolKey(betslip.multipoolId)), 'multipool missing');
+  const mp = Multipool.deserialize(getBytes(mpoolKey(betslip.multipoolId)));
+  assert(mp.isFinalized, 'multipool not finalized');
+
+  // If not winner, just mark claimed
+  if (!betslip.isWinner) {
+    betslip.isClaimed = true;
+    setBytes(betslipKey(betslipId), betslip.serialize());
+    incrementCounter(TOTAL_BETS_CLAIMED_KEY);
+    endNonReentrant();
+    generateEvent('MultibetClaimed:' + betslipId + ':payout=0');
+    return;
+  }
+
+  // Calculate payout
+  const totalU = mp.totalPool;
+  const houseAmount = totalU * u128.fromU64(mp.houseEdgeBps) / u128.fromU64(BASIS_POINTS);
+  const payoutPool = totalU - houseAmount;
+
+  assert(mp.totalWinnerWeightFP > 0, 'no winners');
+  const payoutU = payoutPool * betslip.weightFP / mp.totalWinnerWeightFP;
+  const payout = payoutU.toString();
+
+  // Mark claimed before transfer
+  betslip.isClaimed = true;
+  setBytes(betslipKey(betslipId), betslip.serialize());
+
+  // Transfer tokens
+  const token = new IERC20(mp.token);
+  const bal = token.balanceOf(Context.callee());
+  assert(bal >= u256.fromString(payout), 'contract insufficient funds');
+  token.transfer(betslip.bettor, u256.fromString(payout));
+
+  incrementCounter(TOTAL_BETS_CLAIMED_KEY);
+  endNonReentrant();
+  generateEvent('MultibetClaimed:' + betslipId + ':payout=' + payout);
+}
+
+// View functions for multipool
+export function prediction_readMultipool(args: StaticArray<u8>): StaticArray<u8> {
+  const ar = new Args(args);
+  const multipoolId = ar.nextString().unwrap();
+  if (!hasKey(mpoolKey(multipoolId))) return stringToBytes('null');
+  return getBytes(mpoolKey(multipoolId));
+}
+
+export function prediction_readBetslip(args: StaticArray<u8>): StaticArray<u8> {
+  const ar = new Args(args);
+  const betslipId = ar.nextString().unwrap();
+  if (!hasKey(betslipKey(betslipId))) return stringToBytes('null');
+  return getBytes(betslipKey(betslipId));
 }
 
 /*
