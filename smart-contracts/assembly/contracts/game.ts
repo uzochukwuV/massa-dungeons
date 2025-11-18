@@ -226,15 +226,15 @@ export class Character {
     a.add(this.owner.toString());
     a.add(this.characterClass);
     a.add(this.name);
-    a.add(this.level);
+    a.add(this.level as u32);
     a.add(this.xp);
     a.add(this.maxHp);
     a.add(this.currentHp);
-    a.add(this.baseDamageMin);
-    a.add(this.baseDamageMax);
-    a.add(this.critChance);
-    a.add(this.dodgeChance);
-    a.add(this.defense);
+    a.add(this.baseDamageMin as u32);
+    a.add(this.baseDamageMax as u32);
+    a.add(this.critChance as u32);
+    a.add(this.dodgeChance as u32);
+    a.add(this.defense as u32);
     a.add(this.totalWins);
     a.add(this.totalLosses);
     a.add(this.mmr);
@@ -282,8 +282,8 @@ export class Battle {
   wildcardActive: bool;
   wildcardType: u8; // enum-like
   wildcardDecisionDeadline: u64;
-  wildcardPlayer1Decision: i32; // -1 none, 0 no, 1 yes
-  wildcardPlayer2Decision: i32;
+  wildcardPlayer1Decision: i8; // -1 none, 0 no, 1 yes
+  wildcardPlayer2Decision: i8;
 
   constructor() {
     this.player1Char = new Address('0');
@@ -322,8 +322,8 @@ export class Battle {
     a.add(this.wildcardActive);
     a.add(this.wildcardType);
     a.add(this.wildcardDecisionDeadline);
-    a.add(this.wildcardPlayer1Decision);
-    a.add(this.wildcardPlayer2Decision);
+    a.add(this.wildcardPlayer1Decision as i32);
+    a.add(this.wildcardPlayer2Decision as i32);
     return a.serialize();
   }
 
@@ -345,8 +345,8 @@ export class Battle {
     b.wildcardActive = a.nextBool().unwrap();
     b.wildcardType = a.nextU8().unwrap();
     b.wildcardDecisionDeadline = a.nextU64().unwrap();
-    b.wildcardPlayer1Decision = a.nextI32().unwrap();
-    b.wildcardPlayer2Decision = a.nextI32().unwrap();
+    b.wildcardPlayer1Decision = a.nextI32().unwrap() as i8;
+    b.wildcardPlayer2Decision = a.nextI32().unwrap() as i8;
     return b;
   }
 }
@@ -878,7 +878,7 @@ export class SinglePool {
   houseEdgeBps: u16;
   isClosed: bool;
   isSettled: bool;
-  winningOutcome: i32; // -1 none, 0 A, 1 B
+  winningOutcome: i8; // -1 none, 0 A, 1 B
   createdAt: u64;
 
   constructor() {
@@ -909,10 +909,10 @@ export class SinglePool {
     a.add(this.outcomeBBets.toString());
     a.add(this.outcomeAOddsFP.toString());
     a.add(this.outcomeBOddsFP.toString());
-    a.add(this.houseEdgeBps);
+    a.add(this.houseEdgeBps as u32);
     a.add(this.isClosed);
     a.add(this.isSettled);
-    a.add(this.winningOutcome);
+    a.add(this.winningOutcome as i32);
     a.add(this.createdAt);
     return a.serialize();
   }
@@ -929,10 +929,10 @@ export class SinglePool {
     p.outcomeBBets = u128.fromString(a.nextString().unwrap());
     p.outcomeAOddsFP = u128.fromString(a.nextString().unwrap());
     p.outcomeBOddsFP = u128.fromString(a.nextString().unwrap());
-    p.houseEdgeBps = a.nextU16().unwrap();
+    p.houseEdgeBps = a.nextU32().unwrap() as u16;
     p.isClosed = a.nextBool().unwrap();
     p.isSettled = a.nextBool().unwrap();
-    p.winningOutcome = a.nextI32().unwrap();
+    p.winningOutcome = a.nextI32().unwrap() as i8;
     p.createdAt = a.nextU64().unwrap();
     return p;
   }
@@ -942,14 +942,14 @@ export class SingleBet {
   bettor: Address;
   poolId: string;
   amount: u128;
-  outcome: i32; // 0 A, 1 B
+  outcome: i8; // 0 A, 1 B
   isClaimed: bool;
   placedAt: u64;
 
   constructor() {
     this.bettor = new Address('0');
     this.poolId = '';
-    this.amount = 0;
+    this.amount = u128.Zero;
     this.outcome = -1;
     this.isClaimed = false;
     this.placedAt = 0;
@@ -960,7 +960,7 @@ export class SingleBet {
     a.add(this.bettor.toString());
     a.add(this.poolId);
     a.add(this.amount.toString());
-    a.add(this.outcome);
+    a.add(this.outcome as i32);
     a.add(this.isClaimed);
     a.add(this.placedAt);
     return a.serialize();
@@ -972,7 +972,7 @@ export class SingleBet {
     b.bettor = new Address(a.nextString().unwrap());
     b.poolId = a.nextString().unwrap();
     b.amount = u128.fromString(a.nextString().unwrap());
-    b.outcome = a.nextI32().unwrap();
+    b.outcome = a.nextI32().unwrap() as i8;
     b.isClaimed = a.nextBool().unwrap();
     b.placedAt = a.nextU64().unwrap();
     return b;
@@ -1009,7 +1009,7 @@ export class Multipool {
     a.add(this.totalWeightFP.toString());
     a.add(this.totalWinnerWeightFP.toString());
     a.add(this.isFinalized);
-    a.add(this.houseEdgeBps);
+    a.add(this.houseEdgeBps as u32);
     a.add(this.createdAt);
     return a.serialize();
   }
@@ -1023,7 +1023,7 @@ export class Multipool {
     m.totalWeightFP = u128.fromString(a.nextString().unwrap());
     m.totalWinnerWeightFP = u128.fromString(a.nextString().unwrap());
     m.isFinalized = a.nextBool().unwrap();
-    m.houseEdgeBps = a.nextU16().unwrap();
+    m.houseEdgeBps = a.nextU32().unwrap() as u16;
     m.createdAt = a.nextU64().unwrap();
     return m;
   }
@@ -1031,12 +1031,12 @@ export class Multipool {
 
 export class BetslipSelection {
   poolId: string;
-  outcome: i32;
+  outcome: i8;
   oddsFP: u128;
   constructor() {
     this.poolId = '';
     this.outcome = -1;
-    this.oddsFP = 0;
+    this.oddsFP = u128.Zero;
   }
   // for simplicity, use JSON-like serialization inside Args (string)
   toString(): string {
@@ -1046,7 +1046,7 @@ export class BetslipSelection {
     const parts = s.split('|');
     const sel = new BetslipSelection();
     sel.poolId = parts[0];
-    sel.outcome = parseInt(parts[1]);
+    sel.outcome = parseInt(parts[1]) as i8;
     sel.oddsFP = u128.fromString(parts[2]);
     return sel;
   }
@@ -1069,10 +1069,10 @@ export class Betslip {
     this.betslipId = '';
     this.bettor = new Address('0');
     this.multipoolId = '';
-    this.amount = 0;
+    this.amount = u128.Zero;
     this.selections = [];
-    this.combinedOddsFP = 0;
-    this.weightFP = 0;
+    this.combinedOddsFP = u128.Zero;
+    this.weightFP = u128.Zero;
     this.isWinner = false;
     this.isClaimed = false;
     this.isAccounted = false;
@@ -1180,7 +1180,7 @@ export function prediction_placeSingleBet(args: StaticArray<u8>): void {
   nonReentrant();
   const ar = new Args(args);
   const poolId = ar.nextString().unwrap();
-  const outcome = ar.nextI32().unwrap();
+  const outcome = ar.nextI32().unwrap() as i8;
   const amount = ar.nextU64().unwrap();
 
   assert(hasKey(spoolKey(poolId)), 'pool missing');
@@ -1193,12 +1193,11 @@ export function prediction_placeSingleBet(args: StaticArray<u8>): void {
   const caller = Context.caller();
   const token = new IERC20(pool.token);
   const allowance = token.allowance(caller, Context.callee());
-  const amountU256 = u256.fromU64(amount);
-  assert(allowance >= amountU256, 'allowance low');
+  assert(allowance >= amount, 'allowance low');
   const bal = token.balanceOf(caller);
-  assert(bal >= amountU256, 'insufficient token balance');
+  assert(bal >= amount, 'insufficient token balance');
 
-  token.transferFrom(caller, Context.callee(), amountU256);
+  token.transferFrom(caller, Context.callee(), amount);
 
   // update pool totals
   pool.totalPool = pool.totalPool + u128.fromU64(amount);
@@ -1236,18 +1235,18 @@ export function prediction_closeSinglePool(args: StaticArray<u8>): void {
 
   pool.isClosed = true;
 
-  if (pool.totalPool > 0) {
+  if (pool.totalPool > u128.Zero) {
     // compute house amount & payout pool
     const totalU = pool.totalPool;
     const houseAmount = totalU * u128.fromU64(pool.houseEdgeBps) / u128.fromU64(BASIS_POINTS);
     const payoutPool = totalU - houseAmount;
 
-    if (pool.outcomeABets > 0) {
-      const oddsAfp = payoutPool * u128.fromU64(ODDS_SCALE_U128 as u64) / pool.outcomeABets;
+    if (pool.outcomeABets > u128.Zero) {
+      const oddsAfp = payoutPool * ODDS_SCALE_U128 / pool.outcomeABets;
       pool.outcomeAOddsFP = oddsAfp;
     }
-    if (pool.outcomeBBets > 0) {
-      const oddsBfp = payoutPool * u128.fromU64(ODDS_SCALE_U128 as u64) / pool.outcomeBBets;
+    if (pool.outcomeBBets > u128.Zero) {
+      const oddsBfp = payoutPool * ODDS_SCALE_U128 / pool.outcomeBBets;
       pool.outcomeBOddsFP = oddsBfp;
     }
   }
@@ -1268,7 +1267,7 @@ export function prediction_settleSinglePool(args: StaticArray<u8>): void {
   nonReentrant();
   const ar = new Args(args);
   const poolId = ar.nextString().unwrap();
-  const winningOutcome = ar.nextI32().unwrap(); // 0 A, 1 B
+  const winningOutcome = ar.nextI32().unwrap() as i8; // 0 A, 1 B
 
   assert(hasKey(spoolKey(poolId)), 'pool missing');
   const pRaw = getBytes(spoolKey(poolId));
@@ -1319,10 +1318,10 @@ export function prediction_claimSingleBet(args: StaticArray<u8>): void {
   const houseAmount = totalU * u128.fromU64(pool.houseEdgeBps) / u128.fromU64(BASIS_POINTS);
   const payoutPool = totalU - houseAmount;
   const winnerTotal = pool.winningOutcome == 0 ? pool.outcomeABets : pool.outcomeBBets;
-  assert(winnerTotal > 0, 'no winners in pool');
+  assert(winnerTotal > u128.Zero, 'no winners in pool');
 
   const payoutU = payoutPool * bet.amount / winnerTotal; // u128 math
-  const payoutU256 = u256.fromU128(payoutU); // Convert to u256 for token transfer
+  const payoutU64 = payoutU.toU64(); // Convert to u64 for token transfer
 
   // mark claimed before transfer (reentrancy guard)
   bet.isClaimed = true;
@@ -1332,8 +1331,8 @@ export function prediction_claimSingleBet(args: StaticArray<u8>): void {
   const tokenContract = new IERC20(pool.token);
   // ensure contract has balance
   const bal = tokenContract.balanceOf(Context.callee());
-  assert(bal >= payoutU256, 'contract insufficient funds');
-  tokenContract.transfer(bettor, payoutU256);
+  assert(bal >= payoutU64, 'contract insufficient funds');
+  tokenContract.transfer(bettor, payoutU64);
 
   // Increment claimed bets counter
   incrementCounter(TOTAL_BETS_CLAIMED_KEY);
@@ -1442,11 +1441,11 @@ export function prediction_placeMultibet(args: StaticArray<u8>): void {
 
   // Parse selections
   const selections: string[] = [];
-  let combinedOddsFP: u128 = u128.fromU64(ODDS_SCALE_U128 as u64); // Start with 1.0 in FP
+  let combinedOddsFP: u128 = ODDS_SCALE_U128; // Start with 1.0 in FP
 
   for (let i: u32 = 0; i < selectionsCount; i++) {
     const poolId = ar.nextString().unwrap();
-    const outcome = ar.nextI32().unwrap();
+    const outcome = ar.nextI32().unwrap() as i8;
 
     // Verify pool exists and is closed (odds finalized)
     assert(hasKey(spoolKey(poolId)), 'pool ' + poolId + ' missing');
@@ -1455,10 +1454,10 @@ export function prediction_placeMultibet(args: StaticArray<u8>): void {
 
     // Get odds for this outcome
     const oddsFP = outcome == 0 ? pool.outcomeAOddsFP : pool.outcomeBOddsFP;
-    assert(oddsFP > 0, 'invalid odds for pool ' + poolId);
+    assert(oddsFP > u128.Zero, 'invalid odds for pool ' + poolId);
 
     // Multiply combined odds (FP math: multiply then divide by scale)
-    combinedOddsFP = combinedOddsFP * oddsFP / u128.fromU64(ODDS_SCALE_U128 as u64);
+    combinedOddsFP = combinedOddsFP * oddsFP / ODDS_SCALE_U128;
 
     // Store selection
     const sel = new BetslipSelection();
@@ -1475,12 +1474,11 @@ export function prediction_placeMultibet(args: StaticArray<u8>): void {
 
   const token = new IERC20(mp.token);
   const allowance = token.allowance(caller, Context.callee());
-  const amountU256 = u256.fromU64(amount);
-  assert(allowance >= amountU256, 'allowance low');
+  assert(allowance >= amount, 'allowance low');
   const bal = token.balanceOf(caller);
-  assert(bal >= amountU256, 'insufficient balance');
+  assert(bal >= amount, 'insufficient balance');
 
-  token.transferFrom(caller, Context.callee(), amountU256);
+  token.transferFrom(caller, Context.callee(), amount);
 
   // Create betslip
   const betslip = new Betslip();
@@ -1491,7 +1489,7 @@ export function prediction_placeMultibet(args: StaticArray<u8>): void {
   betslip.selections = selections;
   betslip.combinedOddsFP = combinedOddsFP;
   // Weight = amount * combinedOddsFP (simplified parlay weight)
-  betslip.weightFP = u128.fromU64(amount) * combinedOddsFP / u128.fromU64(ODDS_SCALE_U128 as u64);
+  betslip.weightFP = u128.fromU64(amount) * combinedOddsFP / ODDS_SCALE_U128;
   betslip.isWinner = false;
   betslip.isClaimed = false;
   betslip.isAccounted = false;
@@ -1599,9 +1597,9 @@ export function prediction_claimMultibet(args: StaticArray<u8>): void {
   const houseAmount = totalU * u128.fromU64(mp.houseEdgeBps) / u128.fromU64(BASIS_POINTS);
   const payoutPool = totalU - houseAmount;
 
-  assert(mp.totalWinnerWeightFP > 0, 'no winners');
+  assert(mp.totalWinnerWeightFP > u128.Zero, 'no winners');
   const payoutU = payoutPool * betslip.weightFP / mp.totalWinnerWeightFP;
-  const payoutU256 = u256.fromU128(payoutU); // Convert to u256 for token transfer
+  const payoutU64 = payoutU.toU64(); // Convert to u64 for token transfer
 
   // Mark claimed before transfer
   betslip.isClaimed = true;
@@ -1610,8 +1608,8 @@ export function prediction_claimMultibet(args: StaticArray<u8>): void {
   // Transfer tokens
   const token = new IERC20(mp.token);
   const bal = token.balanceOf(Context.callee());
-  assert(bal >= payoutU256, 'contract insufficient funds');
-  token.transfer(betslip.bettor, payoutU256);
+  assert(bal >= payoutU64, 'contract insufficient funds');
+  token.transfer(betslip.bettor, payoutU64);
 
   incrementCounter(TOTAL_BETS_CLAIMED_KEY);
   endNonReentrant();
