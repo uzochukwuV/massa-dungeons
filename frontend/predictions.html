@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Massa Dungeons - Prediction Markets</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'game-dark': '#0a0a0a',
+                        'game-gray': '#1a1a1a',
+                        'game-light': '#2a2a2a',
+                        'game-accent': '#f5f5f5',
+                        'game-silver': '#c0c0c0',
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        * {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            background: #0a0a0a;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #ffffff 0%, #a0a0a0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .card-hover {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(255,255,255,0.05);
+        }
+
+        .bet-slip-fixed {
+            position: sticky;
+            top: 20px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        /* Custom scrollbar */
+        .bet-slip-fixed::-webkit-scrollbar,
+        .overflow-y-auto::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .bet-slip-fixed::-webkit-scrollbar-track,
+        .overflow-y-auto::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        .bet-slip-fixed::-webkit-scrollbar-thumb,
+        .overflow-y-auto::-webkit-scrollbar-thumb {
+            background: #404040;
+            border-radius: 3px;
+        }
+
+        .bet-slip-fixed::-webkit-scrollbar-thumb:hover,
+        .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+            background: #505050;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-open {
+            background: rgba(34, 197, 94, 0.1);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.2);
+        }
+
+        .status-live {
+            background: rgba(59, 130, 246, 0.1);
+            color: #3b82f6;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+
+        .status-settled {
+            background: rgba(156, 163, 175, 0.1);
+            color: #9ca3af;
+            border: 1px solid rgba(156, 163, 175, 0.2);
+        }
+
+        .odds-button {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .odds-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .odds-button.selected {
+            background: rgba(34, 197, 94, 0.2);
+            border-color: #22c55e;
+        }
+
+        .filter-active {
+            background: rgba(255, 255, 255, 0.1) !important;
+            border-color: rgba(255, 255, 255, 0.3) !important;
+        }
+
+        table {
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            background: #1a1a1a;
+            z-index: 10;
+        }
+
+        tr {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        tr:last-child {
+            border-bottom: none;
+        }
+
+        .winner-badge {
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+
+        .pulse-dot {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: .5;
+            }
+        }
+    </style>
+</head>
+<body class="text-white">
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 bg-game-dark/80 backdrop-blur-xl border-b border-white/5">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-8">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-xl">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                        <span class="text-xl font-bold gradient-text">Massa Dungeons</span>
+                    </div>
+
+                    <div class="hidden md:flex items-center space-x-6">
+                        <a href="landing.html" class="text-game-silver hover:text-white transition-colors text-sm">Home</a>
+                        <a href="#" class="text-white font-medium text-sm">Predictions</a>
+                        <a href="#" class="text-game-silver hover:text-white transition-colors text-sm">Battles</a>
+                        <a href="#" class="text-game-silver hover:text-white transition-colors text-sm">Leaderboard</a>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-4">
+                    <div class="hidden md:flex items-center space-x-2 bg-white/5 border border-white/10 rounded-lg px-4 py-2">
+                        <svg class="w-5 h-5 text-game-silver" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span class="text-sm font-medium" id="userBalance">0.00 MAS</span>
+                    </div>
+
+                    <button id="connectWallet" class="bg-white text-black px-4 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors text-sm">
+                        Connect Wallet
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="pt-24 pb-12 px-6">
+        <div class="max-w-7xl mx-auto">
+
+            <!-- Header Section -->
+            <div class="mb-8">
+                <h1 class="text-4xl md:text-5xl font-bold mb-3 gradient-text">Prediction Markets</h1>
+                <p class="text-game-silver text-lg">Bet on battle outcomes and earn from accurate predictions</p>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-game-gray border border-white/5 rounded-xl p-4">
+                    <div class="text-game-silver text-sm mb-1">Total Volume</div>
+                    <div class="text-2xl font-bold" id="totalVolume">$73,420</div>
+                </div>
+                <div class="bg-game-gray border border-white/5 rounded-xl p-4">
+                    <div class="text-game-silver text-sm mb-1">Active Pools</div>
+                    <div class="text-2xl font-bold" id="activePools">24</div>
+                </div>
+                <div class="bg-game-gray border border-white/5 rounded-xl p-4">
+                    <div class="text-game-silver text-sm mb-1">Your Bets</div>
+                    <div class="text-2xl font-bold" id="userBets">3</div>
+                </div>
+                <div class="bg-game-gray border border-white/5 rounded-xl p-4">
+                    <div class="text-game-silver text-sm mb-1">Potential Win</div>
+                    <div class="text-2xl font-bold text-green-400" id="potentialWin">+$245</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                <!-- Main Content Area -->
+                <div class="lg:col-span-2 space-y-6">
+
+                    <!-- Filters & Search -->
+                    <div class="bg-game-gray border border-white/5 rounded-xl p-4">
+                        <div class="flex flex-col md:flex-row gap-4">
+                            <!-- Search -->
+                            <div class="flex-1">
+                                <div class="relative">
+                                    <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-game-silver" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                    </svg>
+                                    <input type="text" id="searchInput" placeholder="Search pools..."
+                                           class="w-full bg-game-dark border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-white/20">
+                                </div>
+                            </div>
+
+                            <!-- Filters -->
+                            <div class="flex gap-2">
+                                <button class="filter-btn filter-active px-4 py-2 bg-game-dark border border-white/10 rounded-lg text-sm hover:bg-white/5 transition-colors" data-filter="all">
+                                    All
+                                </button>
+                                <button class="filter-btn px-4 py-2 bg-game-dark border border-white/10 rounded-lg text-sm hover:bg-white/5 transition-colors" data-filter="open">
+                                    Open
+                                </button>
+                                <button class="filter-btn px-4 py-2 bg-game-dark border border-white/10 rounded-lg text-sm hover:bg-white/5 transition-colors" data-filter="live">
+                                    Live
+                                </button>
+                                <button class="filter-btn px-4 py-2 bg-game-dark border border-white/10 rounded-lg text-sm hover:bg-white/5 transition-colors" data-filter="settled">
+                                    Settled
+                                </button>
+                            </div>
+
+                            <!-- Sort -->
+                            <select id="sortSelect" class="px-4 py-2 bg-game-dark border border-white/10 rounded-lg text-sm focus:outline-none focus:border-white/20">
+                                <option value="volume">Volume</option>
+                                <option value="odds">Best Odds</option>
+                                <option value="recent">Most Recent</option>
+                                <option value="ending">Ending Soon</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Prediction Pools Table -->
+                    <div class="bg-game-gray border border-white/5 rounded-xl overflow-hidden">
+                        <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="text-left text-game-silver border-b border-white/5">
+                                        <th class="px-4 py-3 font-medium">Pool</th>
+                                        <th class="px-4 py-3 font-medium">Status</th>
+                                        <th class="px-4 py-3 font-medium text-right">Volume</th>
+                                        <th class="px-4 py-3 font-medium text-center">Outcomes</th>
+                                        <th class="px-4 py-3 font-medium text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="poolsTableBody">
+                                    <!-- Pool Row Example -->
+                                    <tr class="hover:bg-white/5 transition-colors card-hover cursor-pointer pool-row">
+                                        <td class="px-4 py-4">
+                                            <div class="flex items-start space-x-3">
+                                                <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                                                    </svg>
+                                                </div>
+                                                <div>
+                                                    <div class="font-medium text-white mb-1">Epic Warrior vs Dark Mage</div>
+                                                    <div class="text-xs text-game-silver">Battle #42069 • Created 2h ago</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-4">
+                                            <span class="status-badge status-live">
+                                                <span class="pulse-dot inline-block w-1.5 h-1.5 bg-current rounded-full mr-1"></span>
+                                                Live
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-4 text-right">
+                                            <div class="font-medium">$4,523</div>
+                                            <div class="text-xs text-game-silver">1,234 bets</div>
+                                        </td>
+                                        <td class="px-4 py-4">
+                                            <div class="flex justify-center gap-2">
+                                                <button class="odds-button flex-1 max-w-[100px]" data-outcome="0">
+                                                    <div class="text-xs text-game-silver mb-1">Warrior</div>
+                                                    <div class="font-bold text-green-400">1.85x</div>
+                                                </button>
+                                                <button class="odds-button flex-1 max-w-[100px]" data-outcome="1">
+                                                    <div class="text-xs text-game-silver mb-1">Mage</div>
+                                                    <div class="font-bold text-red-400">2.15x</div>
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-4 text-right">
+                                            <button class="text-white hover:text-game-silver">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                                </svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+
+                                    <!-- More sample rows -->
+                                    <tr class="hover:bg-white/5 transition-colors card-hover cursor-pointer pool-row">
+                                        <td class="px-4 py-4">
+                                            <div class="flex items-start space-x-3">
+                                                <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                                    </svg>
+                                                </div>
+                                                <div>
+                                                    <div class="font-medium text-white mb-1">Thunder Assassin vs Ice Warrior</div>
+                                                    <div class="text-xs text-game-silver">Battle #42068 • Created 4h ago</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-4">
+                                            <span class="status-badge status-open">Open</span>
+                                        </td>
+                                        <td class="px-4 py-4 text-right">
+                                            <div class="font-medium">$8,942</div>
+                                            <div class="text-xs text-game-silver">2,891 bets</div>
+                                        </td>
+                                        <td class="px-4 py-4">
+                                            <div class="flex justify-center gap-2">
+                                                <button class="odds-button flex-1 max-w-[100px]" data-outcome="0">
+                                                    <div class="text-xs text-game-silver mb-1">Assassin</div>
+                                                    <div class="font-bold text-green-400">1.45x</div>
+                                                </button>
+                                                <button class="odds-button flex-1 max-w-[100px]" data-outcome="1">
+                                                    <div class="text-xs text-game-silver mb-1">Warrior</div>
+                                                    <div class="font-bold text-red-400">2.85x</div>
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-4 text-right">
+                                            <button class="text-white hover:text-game-silver">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                                </svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+
+                                    <tr class="hover:bg-white/5 transition-colors card-hover cursor-pointer pool-row">
+                                        <td class="px-4 py-4">
+                                            <div class="flex items-start space-x-3">
+                                                <div class="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
+                                                    </svg>
+                                                </div>
+                                                <div>
+                                                    <div class="font-medium text-white mb-1">
+                                                        Forest Ranger vs Shadow Blade
+                                                        <span class="winner-badge ml-2">WINNER</span>
+                                                    </div>
+                                                    <div class="text-xs text-game-silver">Battle #42067 • Ended 1h ago</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-4">
+                                            <span class="status-badge status-settled">Settled</span>
+                                        </td>
+                                        <td class="px-4 py-4 text-right">
+                                            <div class="font-medium">$12,350</div>
+                                            <div class="text-xs text-game-silver">4,123 bets</div>
+                                        </td>
+                                        <td class="px-4 py-4">
+                                            <div class="flex justify-center gap-2">
+                                                <button class="odds-button flex-1 max-w-[100px] selected">
+                                                    <div class="text-xs text-game-silver mb-1">Ranger</div>
+                                                    <div class="font-bold text-green-400">1.95x ✓</div>
+                                                </button>
+                                                <button class="odds-button flex-1 max-w-[100px] opacity-50">
+                                                    <div class="text-xs text-game-silver mb-1">Blade</div>
+                                                    <div class="font-bold text-red-400">2.05x</div>
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-4 text-right">
+                                            <button class="text-green-400 hover:text-green-300 font-medium text-sm">
+                                                Claim
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="bg-game-gray border border-white/5 rounded-xl p-4">
+                        <h3 class="font-bold text-lg mb-4">Recent Activity</h3>
+                        <div class="space-y-3" id="recentActivity">
+                            <div class="flex items-center justify-between text-sm">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                                    <span class="text-game-silver">0x7f2...a8b9 won</span>
+                                    <span class="font-medium">$523</span>
+                                </div>
+                                <span class="text-game-silver text-xs">2m ago</span>
+                            </div>
+                            <div class="flex items-center justify-between text-sm">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-2 h-2 bg-blue-400 rounded-full"></div>
+                                    <span class="text-game-silver">0x3a1...c4d5 placed</span>
+                                    <span class="font-medium">$150</span>
+                                    <span class="text-game-silver">on Warrior</span>
+                                </div>
+                                <span class="text-game-silver text-xs">5m ago</span>
+                            </div>
+                            <div class="flex items-center justify-between text-sm">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                                    <span class="text-game-silver">0x9b3...e7f8 won</span>
+                                    <span class="font-medium">$1,234</span>
+                                </div>
+                                <span class="text-game-silver text-xs">8m ago</span>
+                            </div>
+                            <div class="flex items-center justify-between text-sm">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-2 h-2 bg-blue-400 rounded-full"></div>
+                                    <span class="text-game-silver">0x5c2...a1b3 placed</span>
+                                    <span class="font-medium">$500</span>
+                                    <span class="text-game-silver">on Mage</span>
+                                </div>
+                                <span class="text-game-silver text-xs">12m ago</span>
+                            </div>
+                            <div class="flex items-center justify-between text-sm">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                                    <span class="text-game-silver">New pool created:</span>
+                                    <span class="font-medium">Battle #42070</span>
+                                </div>
+                                <span class="text-game-silver text-xs">15m ago</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Bet Slip Sidebar -->
+                <div class="lg:col-span-1">
+                    <div class="bet-slip-fixed bg-game-gray border border-white/5 rounded-xl overflow-hidden">
+
+                        <!-- Bet Type Tabs -->
+                        <div class="border-b border-white/5">
+                            <div class="flex">
+                                <button class="bet-type-tab flex-1 px-4 py-3 text-sm font-medium border-b-2 border-white transition-colors" data-type="single">
+                                    Single Bet
+                                </button>
+                                <button class="bet-type-tab flex-1 px-4 py-3 text-sm font-medium text-game-silver border-b-2 border-transparent hover:text-white transition-colors" data-type="parlay">
+                                    Parlay
+                                    <span class="ml-1 bg-white/10 px-2 py-0.5 rounded-full text-xs" id="parlayCount">0</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Bet Slip Content -->
+                        <div class="p-4">
+
+                            <!-- Single Bet View -->
+                            <div id="singleBetView">
+                                <div id="singleBetEmpty" class="text-center py-12">
+                                    <svg class="w-16 h-16 mx-auto mb-4 text-game-silver opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                    </svg>
+                                    <p class="text-game-silver text-sm">Select an outcome to place a bet</p>
+                                </div>
+
+                                <div id="singleBetContent" class="hidden space-y-4">
+                                    <!-- Selected bet details will be inserted here -->
+                                    <div class="bg-game-dark rounded-lg p-4">
+                                        <div class="flex justify-between items-start mb-3">
+                                            <div>
+                                                <div class="font-medium text-sm mb-1" id="singleBetTitle">Epic Warrior vs Dark Mage</div>
+                                                <div class="text-xs text-game-silver" id="singleBetOutcome">Warrior Wins</div>
+                                            </div>
+                                            <button id="removeSingleBet" class="text-game-silver hover:text-red-400">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-xs text-game-silver">Odds</span>
+                                            <span class="font-bold text-green-400" id="singleBetOdds">1.85x</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Bet Amount Input -->
+                                    <div>
+                                        <label class="block text-sm font-medium mb-2">Bet Amount</label>
+                                        <div class="relative">
+                                            <input type="number" id="singleBetAmount"
+                                                   placeholder="0.00"
+                                                   class="w-full bg-game-dark border border-white/10 rounded-lg px-4 py-3 pr-16 focus:outline-none focus:border-white/20">
+                                            <span class="absolute right-4 top-1/2 transform -translate-y-1/2 text-game-silver text-sm">MAS</span>
+                                        </div>
+                                        <div class="flex gap-2 mt-2">
+                                            <button class="flex-1 bg-game-dark border border-white/10 rounded px-3 py-1.5 text-xs hover:bg-white/5" data-amount="10">10</button>
+                                            <button class="flex-1 bg-game-dark border border-white/10 rounded px-3 py-1.5 text-xs hover:bg-white/5" data-amount="50">50</button>
+                                            <button class="flex-1 bg-game-dark border border-white/10 rounded px-3 py-1.5 text-xs hover:bg-white/5" data-amount="100">100</button>
+                                            <button class="flex-1 bg-game-dark border border-white/10 rounded px-3 py-1.5 text-xs hover:bg-white/5" data-amount="max">Max</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Potential Return -->
+                                    <div class="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20 rounded-lg p-4">
+                                        <div class="flex justify-between items-center mb-2">
+                                            <span class="text-sm text-game-silver">Potential Return</span>
+                                            <span class="text-lg font-bold text-green-400" id="singlePotentialReturn">0.00 MAS</span>
+                                        </div>
+                                        <div class="flex justify-between items-center text-xs text-game-silver">
+                                            <span>Potential Profit</span>
+                                            <span class="text-green-400" id="singlePotentialProfit">+0.00 MAS</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Place Bet Button -->
+                                    <button id="placeSingleBet" class="w-full bg-white text-black font-bold py-3 rounded-lg hover:bg-gray-200 transition-colors">
+                                        Place Bet
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Parlay Bet View -->
+                            <div id="parlayBetView" class="hidden">
+                                <div id="parlayBetEmpty" class="text-center py-12">
+                                    <svg class="w-16 h-16 mx-auto mb-4 text-game-silver opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                                    </svg>
+                                    <p class="text-game-silver text-sm mb-2">Add multiple bets to create a parlay</p>
+                                    <p class="text-game-silver text-xs">Min 2 bets, Max 10 bets</p>
+                                </div>
+
+                                <div id="parlayBetContent" class="hidden space-y-4">
+                                    <!-- Parlay selections -->
+                                    <div id="parlaySelections" class="space-y-2 max-h-64 overflow-y-auto">
+                                        <!-- Parlay items will be added here dynamically -->
+                                    </div>
+
+                                    <!-- Combined Odds -->
+                                    <div class="bg-game-dark rounded-lg p-4">
+                                        <div class="flex justify-between items-center">
+                                            <span class="text-sm font-medium">Combined Odds</span>
+                                            <span class="text-xl font-bold text-yellow-400" id="parlayOdds">0.00x</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Bet Amount Input -->
+                                    <div>
+                                        <label class="block text-sm font-medium mb-2">Bet Amount</label>
+                                        <div class="relative">
+                                            <input type="number" id="parlayBetAmount"
+                                                   placeholder="0.00"
+                                                   class="w-full bg-game-dark border border-white/10 rounded-lg px-4 py-3 pr-16 focus:outline-none focus:border-white/20">
+                                            <span class="absolute right-4 top-1/2 transform -translate-y-1/2 text-game-silver text-sm">MAS</span>
+                                        </div>
+                                        <div class="flex gap-2 mt-2">
+                                            <button class="flex-1 bg-game-dark border border-white/10 rounded px-3 py-1.5 text-xs hover:bg-white/5" data-amount="10">10</button>
+                                            <button class="flex-1 bg-game-dark border border-white/10 rounded px-3 py-1.5 text-xs hover:bg-white/5" data-amount="50">50</button>
+                                            <button class="flex-1 bg-game-dark border border-white/10 rounded px-3 py-1.5 text-xs hover:bg-white/5" data-amount="100">100</button>
+                                            <button class="flex-1 bg-game-dark border border-white/10 rounded px-3 py-1.5 text-xs hover:bg-white/5" data-amount="max">Max</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Potential Return -->
+                                    <div class="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20 rounded-lg p-4">
+                                        <div class="flex justify-between items-center mb-2">
+                                            <span class="text-sm text-game-silver">Potential Return</span>
+                                            <span class="text-lg font-bold text-yellow-400" id="parlayPotentialReturn">0.00 MAS</span>
+                                        </div>
+                                        <div class="flex justify-between items-center text-xs text-game-silver">
+                                            <span>Potential Profit</span>
+                                            <span class="text-yellow-400" id="parlayPotentialProfit">+0.00 MAS</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Place Bet Button -->
+                                    <button id="placeParlayBet" class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-black font-bold py-3 rounded-lg hover:from-yellow-400 hover:to-orange-400 transition-colors">
+                                        Place Parlay Bet
+                                    </button>
+
+                                    <!-- Clear All -->
+                                    <button id="clearParlay" class="w-full bg-game-dark border border-white/10 text-game-silver font-medium py-2 rounded-lg hover:bg-white/5 transition-colors text-sm">
+                                        Clear All
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- Your Active Bets -->
+                        <div class="border-t border-white/5 p-4">
+                            <h3 class="font-bold text-sm mb-3">Your Active Bets</h3>
+                            <div class="space-y-2" id="activeBetsList">
+                                <div class="bg-game-dark rounded-lg p-3 text-xs">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <div class="font-medium">Thunder Assassin</div>
+                                        <div class="text-green-400">1.45x</div>
+                                    </div>
+                                    <div class="flex justify-between text-game-silver">
+                                        <span>Bet: 50 MAS</span>
+                                        <span class="status-badge status-live" style="padding: 2px 6px; font-size: 0.6rem;">Live</span>
+                                    </div>
+                                </div>
+
+                                <div class="bg-game-dark rounded-lg p-3 text-xs">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <div class="font-medium">Epic Warrior</div>
+                                        <div class="text-green-400">1.85x</div>
+                                    </div>
+                                    <div class="flex justify-between text-game-silver">
+                                        <span>Bet: 100 MAS</span>
+                                        <span class="status-badge status-live" style="padding: 2px 6px; font-size: 0.6rem;">Live</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Game SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@massalabs/massa-web3@latest/bundle.js"></script>
+    <script src="game-web3.js"></script>
+
+    <!-- Application Logic -->
+    <script>
+        // Global state
+        let currentBetType = 'single';
+        let singleBet = null;
+        let parlayBets = [];
+        let sdk = null;
+
+        // Filter buttons
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('filter-active'));
+                btn.classList.add('filter-active');
+                filterPools(btn.dataset.filter);
+            });
+        });
+
+        // Bet type tabs
+        document.querySelectorAll('.bet-type-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                currentBetType = tab.dataset.type;
+                document.querySelectorAll('.bet-type-tab').forEach(t => {
+                    t.classList.remove('border-white', 'text-white');
+                    t.classList.add('border-transparent', 'text-game-silver');
+                });
+                tab.classList.add('border-white', 'text-white');
+                tab.classList.remove('border-transparent', 'text-game-silver');
+
+                // Toggle views
+                if (currentBetType === 'single') {
+                    document.getElementById('singleBetView').classList.remove('hidden');
+                    document.getElementById('parlayBetView').classList.add('hidden');
+                } else {
+                    document.getElementById('singleBetView').classList.add('hidden');
+                    document.getElementById('parlayBetView').classList.remove('hidden');
+                }
+            });
+        });
+
+        // Odds button click handler
+        document.querySelectorAll('.odds-button').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+
+                const poolRow = btn.closest('.pool-row');
+                const poolTitle = poolRow.querySelector('.font-medium').textContent.trim();
+                const outcomeName = btn.querySelector('.text-xs').textContent;
+                const odds = btn.querySelector('.font-bold').textContent.replace('x', '').replace(' ✓', '');
+
+                if (currentBetType === 'single') {
+                    selectSingleBet(poolTitle, outcomeName, parseFloat(odds));
+                } else {
+                    addToParlayBet(poolTitle, outcomeName, parseFloat(odds));
+                }
+            });
+        });
+
+        // Single bet functions
+        function selectSingleBet(title, outcome, odds) {
+            singleBet = { title, outcome, odds };
+
+            document.getElementById('singleBetEmpty').classList.add('hidden');
+            document.getElementById('singleBetContent').classList.remove('hidden');
+
+            document.getElementById('singleBetTitle').textContent = title;
+            document.getElementById('singleBetOutcome').textContent = outcome;
+            document.getElementById('singleBetOdds').textContent = odds.toFixed(2) + 'x';
+
+            updateSingleBetCalculations();
+        }
+
+        document.getElementById('removeSingleBet')?.addEventListener('click', () => {
+            singleBet = null;
+            document.getElementById('singleBetEmpty').classList.remove('hidden');
+            document.getElementById('singleBetContent').classList.add('hidden');
+            document.getElementById('singleBetAmount').value = '';
+        });
+
+        document.getElementById('singleBetAmount')?.addEventListener('input', updateSingleBetCalculations);
+
+        function updateSingleBetCalculations() {
+            const amount = parseFloat(document.getElementById('singleBetAmount').value) || 0;
+            if (singleBet) {
+                const potentialReturn = amount * singleBet.odds;
+                const potentialProfit = potentialReturn - amount;
+
+                document.getElementById('singlePotentialReturn').textContent = potentialReturn.toFixed(2) + ' MAS';
+                document.getElementById('singlePotentialProfit').textContent = '+' + potentialProfit.toFixed(2) + ' MAS';
+            }
+        }
+
+        // Parlay bet functions
+        function addToParlayBet(title, outcome, odds) {
+            // Check if already added
+            const exists = parlayBets.find(b => b.title === title);
+            if (exists) {
+                alert('This pool is already in your parlay');
+                return;
+            }
+
+            if (parlayBets.length >= 10) {
+                alert('Maximum 10 bets in a parlay');
+                return;
+            }
+
+            parlayBets.push({ title, outcome, odds });
+            updateParlayView();
+        }
+
+        function updateParlayView() {
+            document.getElementById('parlayCount').textContent = parlayBets.length;
+
+            if (parlayBets.length === 0) {
+                document.getElementById('parlayBetEmpty').classList.remove('hidden');
+                document.getElementById('parlayBetContent').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('parlayBetEmpty').classList.add('hidden');
+            document.getElementById('parlayBetContent').classList.remove('hidden');
+
+            // Update selections list
+            const selectionsContainer = document.getElementById('parlaySelections');
+            selectionsContainer.innerHTML = parlayBets.map((bet, index) => `
+                <div class="bg-game-dark rounded-lg p-3">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="font-medium text-xs mb-1">${bet.title}</div>
+                            <div class="text-xs text-game-silver">${bet.outcome}</div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="font-bold text-green-400 text-sm">${bet.odds.toFixed(2)}x</span>
+                            <button class="text-game-silver hover:text-red-400" onclick="removeParlayBet(${index})">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Calculate combined odds
+            const combinedOdds = parlayBets.reduce((acc, bet) => acc * bet.odds, 1);
+            document.getElementById('parlayOdds').textContent = combinedOdds.toFixed(2) + 'x';
+
+            updateParlayCalculations();
+        }
+
+        function removeParlayBet(index) {
+            parlayBets.splice(index, 1);
+            updateParlayView();
+        }
+
+        document.getElementById('clearParlay')?.addEventListener('click', () => {
+            parlayBets = [];
+            updateParlayView();
+        });
+
+        document.getElementById('parlayBetAmount')?.addEventListener('input', updateParlayCalculations);
+
+        function updateParlayCalculations() {
+            const amount = parseFloat(document.getElementById('parlayBetAmount').value) || 0;
+            const combinedOdds = parlayBets.reduce((acc, bet) => acc * bet.odds, 1);
+            const potentialReturn = amount * combinedOdds;
+            const potentialProfit = potentialReturn - amount;
+
+            document.getElementById('parlayPotentialReturn').textContent = potentialReturn.toFixed(2) + ' MAS';
+            document.getElementById('parlayPotentialProfit').textContent = '+' + potentialProfit.toFixed(2) + ' MAS';
+        }
+
+        // Quick amount buttons
+        document.querySelectorAll('[data-amount]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const amount = btn.dataset.amount;
+                const inputId = currentBetType === 'single' ? 'singleBetAmount' : 'parlayBetAmount';
+
+                if (amount === 'max') {
+                    document.getElementById(inputId).value = '1000'; // Example max balance
+                } else {
+                    document.getElementById(inputId).value = amount;
+                }
+
+                if (currentBetType === 'single') {
+                    updateSingleBetCalculations();
+                } else {
+                    updateParlayCalculations();
+                }
+            });
+        });
+
+        // Place bet buttons
+        document.getElementById('placeSingleBet')?.addEventListener('click', async () => {
+            if (!sdk) {
+                alert('Please connect your wallet first');
+                return;
+            }
+
+            const amount = document.getElementById('singleBetAmount').value;
+            if (!amount || parseFloat(amount) <= 0) {
+                alert('Please enter a valid bet amount');
+                return;
+            }
+
+            console.log('Placing single bet:', singleBet, amount);
+            // TODO: Call SDK to place bet
+            alert('Bet placed! (SDK integration pending)');
+        });
+
+        document.getElementById('placeParlayBet')?.addEventListener('click', async () => {
+            if (!sdk) {
+                alert('Please connect your wallet first');
+                return;
+            }
+
+            const amount = document.getElementById('parlayBetAmount').value;
+            if (!amount || parseFloat(amount) <= 0) {
+                alert('Please enter a valid bet amount');
+                return;
+            }
+
+            if (parlayBets.length < 2) {
+                alert('Add at least 2 bets to create a parlay');
+                return;
+            }
+
+            console.log('Placing parlay bet:', parlayBets, amount);
+            // TODO: Call SDK to place parlay bet
+            alert('Parlay bet placed! (SDK integration pending)');
+        });
+
+        // Filter and sort functions
+        function filterPools(filter) {
+            console.log('Filtering pools by:', filter);
+            // TODO: Implement filtering logic
+        }
+
+        document.getElementById('sortSelect')?.addEventListener('change', (e) => {
+            console.log('Sorting by:', e.target.value);
+            // TODO: Implement sorting logic
+        });
+
+        document.getElementById('searchInput')?.addEventListener('input', (e) => {
+            console.log('Searching:', e.target.value);
+            // TODO: Implement search logic
+        });
+
+        // Connect wallet
+        document.getElementById('connectWallet')?.addEventListener('click', async () => {
+            try {
+                // TODO: Implement wallet connection
+                alert('Wallet connection coming soon!');
+                document.getElementById('userBalance').textContent = '1,234.56 MAS';
+            } catch (error) {
+                console.error('Failed to connect wallet:', error);
+            }
+        });
+    </script>
+
+</body>
+</html>
