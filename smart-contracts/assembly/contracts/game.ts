@@ -19,6 +19,9 @@ import {
   generateEvent,
   callerHasWriteAccess,
   balance,
+  // asyncCall and Slot require massa-as-sdk >= 1.10 (not yet available)
+  // asyncCall,
+  // Slot,
 } from '@massalabs/massa-as-sdk';
 import { Args, stringToBytes, bytesToString as bytesToStr } from '@massalabs/as-types';
 import { IERC20 } from '../interfaces/IERC20';
@@ -83,6 +86,35 @@ export const SKILL_COMBO_BREAKER: u8 = 10; // Reset enemy combo + deal damage, 4
 // Skill costs (energy points)
 export const MAX_ENERGY: u8 = 100;
 export const ENERGY_PER_TURN: u8 = 20; // Regenerate 20 energy per turn
+
+// Autonomous execution bot configuration
+export const BATTLE_BOT_ENABLED_KEY: string = 'battle_bot_enabled';
+export const BATTLE_BOT_COUNTER_KEY: string = 'battle_bot_counter';
+export const BATTLE_BOT_MAX_ITERATIONS: string = 'battle_bot_max_iterations';
+export const BATTLE_BOT_TOTAL_PROCESSED: string = 'battle_bot_total_processed';
+export const BATTLE_BOT_CHECK_INTERVAL: u64 = 3; // Check every 3 slots
+export const BATTLE_BOT_MAX_PER_CYCLE: u64 = 10; // Process max 10 battles per cycle
+export const BATTLE_BOT_GAS_COST: u64 = 500_000_000;
+
+export const TOURNAMENT_BOT_ENABLED_KEY: string = 'tournament_bot_enabled';
+export const TOURNAMENT_BOT_COUNTER_KEY: string = 'tournament_bot_counter';
+export const TOURNAMENT_BOT_MAX_ITERATIONS: string = 'tournament_bot_max_iterations';
+export const TOURNAMENT_BOT_TOTAL_PROCESSED: string = 'tournament_bot_total_processed';
+export const TOURNAMENT_BOT_CHECK_INTERVAL: u64 = 5; // Check every 5 slots
+export const TOURNAMENT_BOT_MAX_PER_CYCLE: u64 = 5; // Process max 5 tournaments per cycle
+export const TOURNAMENT_BOT_GAS_COST: u64 = 500_000_000;
+
+export const PREDICTION_BOT_ENABLED_KEY: string = 'prediction_bot_enabled';
+export const PREDICTION_BOT_COUNTER_KEY: string = 'prediction_bot_counter';
+export const PREDICTION_BOT_MAX_ITERATIONS: string = 'prediction_bot_max_iterations';
+export const PREDICTION_BOT_TOTAL_SETTLED: string = 'prediction_bot_total_settled';
+export const PREDICTION_BOT_CHECK_INTERVAL: u64 = 4; // Check every 4 slots
+export const PREDICTION_BOT_MAX_PER_CYCLE: u64 = 15; // Process max 15 pools per cycle
+export const PREDICTION_BOT_GAS_COST: u64 = 500_000_000;
+
+// Battle turn timeout settings
+export const DEFAULT_TURN_TIMEOUT: u64 = 300; // 5 minutes in seconds
+export const MAX_BATTLE_DURATION: u64 = 3600; // 1 hour max total battle time
 
 // ============================================================================
 // STORAGE HELPER FUNCTIONS - Consistent Key Management
@@ -438,6 +470,10 @@ export class Battle {
   player2Skill1Cooldown: u8;
   player2Skill2Cooldown: u8;
   player2Skill3Cooldown: u8;
+  // Turn timers for autonomous execution
+  lastTurnTimestamp: u64; // When the last turn was executed
+  turnTimeout: u64; // Timeout in seconds for each turn
+  battleDeadline: u64; // Absolute deadline for entire battle
 
   constructor() {
     this.player1Char = new Address('0');
@@ -469,6 +505,9 @@ export class Battle {
     this.player2Skill1Cooldown = 0;
     this.player2Skill2Cooldown = 0;
     this.player2Skill3Cooldown = 0;
+    this.lastTurnTimestamp = 0;
+    this.turnTimeout = DEFAULT_TURN_TIMEOUT;
+    this.battleDeadline = 0;
   }
 
   serialize(): StaticArray<u8> {
@@ -502,6 +541,9 @@ export class Battle {
     a.add(this.player2Skill1Cooldown);
     a.add(this.player2Skill2Cooldown);
     a.add(this.player2Skill3Cooldown);
+    a.add(this.lastTurnTimestamp);
+    a.add(this.turnTimeout);
+    a.add(this.battleDeadline);
     return a.serialize();
   }
 
@@ -537,6 +579,9 @@ export class Battle {
     b.player2Skill1Cooldown = a.nextU8().unwrap();
     b.player2Skill2Cooldown = a.nextU8().unwrap();
     b.player2Skill3Cooldown = a.nextU8().unwrap();
+    b.lastTurnTimestamp = a.nextU64().unwrap();
+    b.turnTimeout = a.nextU64().unwrap();
+    b.battleDeadline = a.nextU64().unwrap();
     return b;
   }
 }
@@ -857,6 +902,12 @@ export function game_createBattle(args: StaticArray<u8>): void {
   battle.wildcardDecisionDeadline = 0;
   battle.wildcardPlayer1Decision = -1;
   battle.wildcardPlayer2Decision = -1;
+
+  // Initialize turn timers for autonomous execution
+  const now = Context.timestamp();
+  battle.lastTurnTimestamp = now;
+  battle.turnTimeout = DEFAULT_TURN_TIMEOUT;
+  battle.battleDeadline = now + MAX_BATTLE_DURATION;
 
   setBytes(battleKey(battleId), battle.serialize());
   incrementCounter(BATTLE_COUNT_KEY);
@@ -1248,6 +1299,9 @@ export function game_executeTurn(args: StaticArray<u8>): void {
   // Save character states (energy regeneration)
   setBytes(characterKey(battle.player1Char.toString()), c1.serialize());
   setBytes(characterKey(battle.player2Char.toString()), c2.serialize());
+
+  // Update turn timestamp for autonomous timeout tracking
+  battle.lastTurnTimestamp = Context.timestamp();
 
   // check finish
   if (battle.player1Hp == 0 || battle.player2Hp == 0) {
@@ -2947,6 +3001,199 @@ export function propbet_readTicket(args: StaticArray<u8>): StaticArray<u8> {
   const ticketKey = propTicketKey(propId, bettor);
   if (!hasKey(ticketKey)) return stringToBytes('null');
   return getBytes(ticketKey);
+}
+
+// ============================================================================
+// AUTONOMOUS EXECUTION - Helper Function
+// ============================================================================
+
+/**
+ * Schedule an async call in the next blockchain slot
+ * @param contractAddress - Address of this contract
+ * @param functionName - Function to call
+ * @param gasBudget - Gas budget for the call
+ */
+function callNextSlot(contractAddress: Address, functionName: string, gasBudget: u64): void {
+  // Note: asyncCall requires massa-as-sdk >= 1.10
+  // Uncomment when SDK is updated:
+  /*
+  const currentPeriod = Context.currentPeriod();
+  const currentThread = Context.currentThread();
+
+  let nextPeriod = currentPeriod;
+  let nextThread = currentThread + 1;
+
+  if (nextThread >= 32) {
+    nextPeriod = currentPeriod + 1;
+    nextThread = 0;
+  }
+
+  asyncCall(
+    contractAddress,
+    functionName,
+    new Slot(nextPeriod, nextThread),
+    new Slot(nextPeriod + 10, nextThread),
+    gasBudget,
+    0,
+    new Args().serialize()
+  );
+  */
+
+  generateEvent('AutoExec:NextSlotScheduled|function=' + functionName + '|note=asyncCall_not_yet_available');
+}
+
+// ============================================================================
+// AUTONOMOUS EXECUTION - BATTLE BOT (Auto-resolve timeouts)
+// ============================================================================
+
+/**
+ * Start the battle bot for autonomous turn timeout resolution
+ * Args: maxIterations (u64) - maximum cycles to run
+ */
+export function startBattleBot(args: StaticArray<u8>): void {
+  onlyRole(ADMIN_ROLE);
+  const ar = new Args(args);
+  let maxIterations: u64 = 1000;
+  const maxIter = ar.nextU64();
+  if (!maxIter.isErr()) {
+    maxIterations = maxIter.unwrap();
+  }
+
+  generateEvent('BattleBot:Starting|maxIterations=' + maxIterations.toString());
+
+  setBool(BATTLE_BOT_ENABLED_KEY, true);
+  setCounter(BATTLE_BOT_COUNTER_KEY, 0);
+  setCounter(BATTLE_BOT_MAX_ITERATIONS, maxIterations);
+  setCounter(BATTLE_BOT_TOTAL_PROCESSED, 0);
+
+  generateEvent('BattleBot:Started|maxIterations=' + maxIterations.toString());
+
+  advanceBattleBot(new Args().serialize());
+}
+
+/**
+ * Stop the battle bot
+ */
+export function stopBattleBot(_: StaticArray<u8>): void {
+  onlyRole(ADMIN_ROLE);
+
+  const botEnabled = getBool(BATTLE_BOT_ENABLED_KEY);
+  if (!botEnabled) {
+    generateEvent('BattleBot:AlreadyStopped');
+    return;
+  }
+
+  setBool(BATTLE_BOT_ENABLED_KEY, false);
+
+  const currentCounter = getCounter(BATTLE_BOT_COUNTER_KEY);
+  const totalProcessed = getCounter(BATTLE_BOT_TOTAL_PROCESSED);
+
+  generateEvent('BattleBot:Stopped|cycles=' + currentCounter.toString() + '|totalProcessed=' + totalProcessed.toString());
+}
+
+/**
+ * Autonomous battle bot cycle
+ * Checks battles for timeouts and auto-resolves them
+ */
+export function advanceBattleBot(_: StaticArray<u8>): void {
+  const enabled = getBool(BATTLE_BOT_ENABLED_KEY);
+  if (!enabled) {
+    generateEvent('BattleBot:Disabled');
+    return;
+  }
+
+  generateEvent('BattleBot:AdvanceStarted');
+
+  let botCounter = getCounter(BATTLE_BOT_COUNTER_KEY);
+  const maxIterations = getCounter(BATTLE_BOT_MAX_ITERATIONS);
+
+  generateEvent('BattleBot:State|counter=' + botCounter.toString() + '|maxIterations=' + maxIterations.toString());
+
+  if (botCounter >= maxIterations) {
+    generateEvent('BattleBot:MaxIterationsReached|counter=' + botCounter.toString());
+    setBool(BATTLE_BOT_ENABLED_KEY, false);
+    return;
+  }
+
+  const totalBattles = getCounter(BATTLE_COUNT_KEY);
+  generateEvent('BattleBot:Processing|totalBattles=' + totalBattles.toString());
+
+  let startBattleId = botCounter * BATTLE_BOT_MAX_PER_CYCLE + 1;
+  let endBattleId = startBattleId + BATTLE_BOT_MAX_PER_CYCLE;
+
+  if (endBattleId > totalBattles) {
+    endBattleId = totalBattles;
+  }
+
+  generateEvent('BattleBot:CheckingBattles|start=' + startBattleId.toString() + '|end=' + endBattleId.toString());
+
+  let processedCount: u64 = 0;
+  let timeoutCount: u64 = 0;
+
+  for (let i = startBattleId; i <= endBattleId; i++) {
+    const battleId = i.toString();
+    if (!hasKey(battleKey(battleId))) {
+      continue;
+    }
+
+    const battleData = getBytes(battleKey(battleId));
+    const battle = Battle.deserialize(battleData);
+
+    processedCount += 1;
+
+    if (battle.isFinished) {
+      continue;
+    }
+
+    const now = Context.timestamp();
+
+    // Check turn timeout
+    if (battle.lastTurnTimestamp > 0 && now - battle.lastTurnTimestamp > battle.turnTimeout) {
+      generateEvent('BattleBot:TurnTimeout|battleId=' + battleId + '|elapsed=' + (now - battle.lastTurnTimestamp).toString());
+
+      // Auto-forfeit the current player
+      battle.isFinished = true;
+      battle.winner = battle.currentTurn == 1 ? 2 : 1; // Opponent wins
+      setBytes(battleKey(battleId), battle.serialize());
+      incrementCounter(TOTAL_BATTLES_FINISHED_KEY);
+
+      timeoutCount += 1;
+      generateEvent('BattleBot:BattleForfeited|battleId=' + battleId + '|winner=' + battle.winner.toString());
+      continue;
+    }
+
+    // Check battle deadline
+    if (battle.battleDeadline > 0 && now > battle.battleDeadline) {
+      generateEvent('BattleBot:BattleDeadlineExceeded|battleId=' + battleId);
+
+      // Auto-finish with current HP leader as winner
+      battle.isFinished = true;
+      battle.winner = battle.player1Hp >= battle.player2Hp ? 1 : 2;
+      setBytes(battleKey(battleId), battle.serialize());
+      incrementCounter(TOTAL_BATTLES_FINISHED_KEY);
+
+      timeoutCount += 1;
+      generateEvent('BattleBot:BattleTimedOut|battleId=' + battleId + '|winner=' + battle.winner.toString());
+    }
+  }
+
+  // Update counters
+  botCounter += 1;
+  setCounter(BATTLE_BOT_COUNTER_KEY, botCounter);
+
+  const totalProcessed = getCounter(BATTLE_BOT_TOTAL_PROCESSED) + processedCount;
+  setCounter(BATTLE_BOT_TOTAL_PROCESSED, totalProcessed);
+
+  generateEvent('BattleBot:CycleComplete|cycle=' + botCounter.toString() + '|processed=' + processedCount.toString() + '|timeouts=' + timeoutCount.toString());
+
+  // Schedule next cycle
+  if (botCounter < maxIterations) {
+    generateEvent('BattleBot:SchedulingNext|cycle=' + botCounter.toString());
+    callNextSlot(Context.callee(), 'advanceBattleBot', BATTLE_BOT_GAS_COST);
+  } else {
+    generateEvent('BattleBot:Completed|totalCycles=' + botCounter.toString() + '|totalProcessed=' + totalProcessed.toString());
+    setBool(BATTLE_BOT_ENABLED_KEY, false);
+  }
 }
 
 /*
