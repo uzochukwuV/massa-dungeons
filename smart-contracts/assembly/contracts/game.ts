@@ -67,6 +67,23 @@ export const RARITY_RARE: u8 = 1;
 export const RARITY_EPIC: u8 = 2;
 export const RARITY_LEGENDARY: u8 = 3;
 
+// Skill types
+export const SKILL_NONE: u8 = 0;
+export const SKILL_POWER_STRIKE: u8 = 1; // 150% damage, 3 turn cooldown
+export const SKILL_HEAL: u8 = 2; // Restore 30% HP, 4 turn cooldown
+export const SKILL_POISON_STRIKE: u8 = 3; // Apply poison, 2 turn cooldown
+export const SKILL_STUN_STRIKE: u8 = 4; // Apply stun, 5 turn cooldown
+export const SKILL_SHIELD_WALL: u8 = 5; // Apply shield, 3 turn cooldown
+export const SKILL_RAGE_MODE: u8 = 6; // Apply rage, 4 turn cooldown
+export const SKILL_CRITICAL_EYE: u8 = 7; // Guarantee next hit is crit, 6 turn cooldown
+export const SKILL_DODGE_MASTER: u8 = 8; // +50% dodge for 2 turns, 5 turn cooldown
+export const SKILL_BURN_AURA: u8 = 9; // Apply burn, 3 turn cooldown
+export const SKILL_COMBO_BREAKER: u8 = 10; // Reset enemy combo + deal damage, 4 turn cooldown
+
+// Skill costs (energy points)
+export const MAX_ENERGY: u8 = 100;
+export const ENERGY_PER_TURN: u8 = 20; // Regenerate 20 energy per turn
+
 // ============================================================================
 // STORAGE HELPER FUNCTIONS - Consistent Key Management
 // ============================================================================
@@ -293,6 +310,12 @@ export class Character {
   weaponId: string;
   armorId: string;
   accessoryId: string;
+  // Skill system
+  skill1: u8; // Equipped skill slot 1
+  skill2: u8; // Equipped skill slot 2
+  skill3: u8; // Equipped skill slot 3
+  learnedSkills: string; // Comma-separated list of learned skill IDs
+  currentEnergy: u8; // Current energy points (max 100)
 
   constructor() {
     this.owner = new Address('0');
@@ -314,6 +337,11 @@ export class Character {
     this.weaponId = '';
     this.armorId = '';
     this.accessoryId = '';
+    this.skill1 = SKILL_NONE;
+    this.skill2 = SKILL_NONE;
+    this.skill3 = SKILL_NONE;
+    this.learnedSkills = '';
+    this.currentEnergy = MAX_ENERGY;
   }
 
   serialize(): StaticArray<u8> {
@@ -337,6 +365,11 @@ export class Character {
     a.add(this.weaponId);
     a.add(this.armorId);
     a.add(this.accessoryId);
+    a.add(this.skill1);
+    a.add(this.skill2);
+    a.add(this.skill3);
+    a.add(this.learnedSkills);
+    a.add(this.currentEnergy);
     return a.serialize();
   }
 
@@ -362,6 +395,11 @@ export class Character {
     c.weaponId = a.nextString().unwrap();
     c.armorId = a.nextString().unwrap();
     c.accessoryId = a.nextString().unwrap();
+    c.skill1 = a.nextU8().unwrap();
+    c.skill2 = a.nextU8().unwrap();
+    c.skill3 = a.nextU8().unwrap();
+    c.learnedSkills = a.nextString().unwrap();
+    c.currentEnergy = a.nextU8().unwrap();
     return c;
   }
 }
@@ -393,6 +431,13 @@ export class Battle {
   // Combo tracking
   player1ComboCount: u8;
   player2ComboCount: u8;
+  // Skill cooldowns (turns remaining)
+  player1Skill1Cooldown: u8;
+  player1Skill2Cooldown: u8;
+  player1Skill3Cooldown: u8;
+  player2Skill1Cooldown: u8;
+  player2Skill2Cooldown: u8;
+  player2Skill3Cooldown: u8;
 
   constructor() {
     this.player1Char = new Address('0');
@@ -418,6 +463,12 @@ export class Battle {
     this.player2StatusDuration = 0;
     this.player1ComboCount = 0;
     this.player2ComboCount = 0;
+    this.player1Skill1Cooldown = 0;
+    this.player1Skill2Cooldown = 0;
+    this.player1Skill3Cooldown = 0;
+    this.player2Skill1Cooldown = 0;
+    this.player2Skill2Cooldown = 0;
+    this.player2Skill3Cooldown = 0;
   }
 
   serialize(): StaticArray<u8> {
@@ -445,6 +496,12 @@ export class Battle {
     a.add(this.player2StatusDuration);
     a.add(this.player1ComboCount);
     a.add(this.player2ComboCount);
+    a.add(this.player1Skill1Cooldown);
+    a.add(this.player1Skill2Cooldown);
+    a.add(this.player1Skill3Cooldown);
+    a.add(this.player2Skill1Cooldown);
+    a.add(this.player2Skill2Cooldown);
+    a.add(this.player2Skill3Cooldown);
     return a.serialize();
   }
 
@@ -474,6 +531,12 @@ export class Battle {
     b.player2StatusDuration = a.nextU8().unwrap();
     b.player1ComboCount = a.nextU8().unwrap();
     b.player2ComboCount = a.nextU8().unwrap();
+    b.player1Skill1Cooldown = a.nextU8().unwrap();
+    b.player1Skill2Cooldown = a.nextU8().unwrap();
+    b.player1Skill3Cooldown = a.nextU8().unwrap();
+    b.player2Skill1Cooldown = a.nextU8().unwrap();
+    b.player2Skill2Cooldown = a.nextU8().unwrap();
+    b.player2Skill3Cooldown = a.nextU8().unwrap();
     return b;
   }
 }
@@ -655,6 +718,7 @@ export function game_executeTurn(args: StaticArray<u8>): void {
   const attackerCharId = ar.nextString().unwrap();
   const stance = ar.nextU8().unwrap(); // 0..4
   const useSpecial = ar.nextBool().unwrap();
+  const skillSlot = ar.nextU8().unwrap(); // 0 = no skill, 1-3 = use skill from that slot
 
   assert(hasKey(battleKey(battleId)), 'battle missing');
   const bData = getBytes(battleKey(battleId));
@@ -733,6 +797,134 @@ export function game_executeTurn(args: StaticArray<u8>): void {
     defenderDodgeBonus += accessory.dodgeBonus;
   }
 
+  // Skill execution logic
+  let skillUsed: u8 = SKILL_NONE;
+  let skillDamageMultiplier: u16 = 100; // 100 = 1.0x
+  let skillForceCrit = false;
+  let skillDodgeBonus: u16 = 0;
+
+  if (skillSlot >= 1 && skillSlot <= 3) {
+    // Get equipped skill
+    const equippedSkill = skillSlot == 1 ? attacker.skill1 : (skillSlot == 2 ? attacker.skill2 : attacker.skill3);
+
+    if (equippedSkill != SKILL_NONE) {
+      // Check cooldown
+      let currentCooldown: u8 = 0;
+      if (isPlayer1) {
+        currentCooldown = skillSlot == 1 ? battle.player1Skill1Cooldown : (skillSlot == 2 ? battle.player1Skill2Cooldown : battle.player1Skill3Cooldown);
+      } else {
+        currentCooldown = skillSlot == 1 ? battle.player2Skill1Cooldown : (skillSlot == 2 ? battle.player2Skill2Cooldown : battle.player2Skill3Cooldown);
+      }
+
+      if (currentCooldown == 0) {
+        const energyCost = getSkillEnergyCost(equippedSkill);
+        if (attacker.currentEnergy >= energyCost) {
+          skillUsed = equippedSkill;
+          attacker.currentEnergy -= energyCost;
+
+          // Apply skill effects
+          if (skillUsed == SKILL_POWER_STRIKE) {
+            skillDamageMultiplier = 150; // 1.5x damage
+          } else if (skillUsed == SKILL_HEAL) {
+            const healAmount = attacker.maxHp * 30 / 100;
+            attacker.currentHp = attacker.currentHp + healAmount > attacker.maxHp ? attacker.maxHp : attacker.currentHp + healAmount;
+            if (isPlayer1) {
+              battle.player1Hp = attacker.currentHp;
+            } else {
+              battle.player2Hp = attacker.currentHp;
+            }
+          } else if (skillUsed == SKILL_POISON_STRIKE) {
+            if (isPlayer1) {
+              battle.player2StatusEffects |= STATUS_POISON;
+              battle.player2StatusDuration = 3;
+            } else {
+              battle.player1StatusEffects |= STATUS_POISON;
+              battle.player1StatusDuration = 3;
+            }
+          } else if (skillUsed == SKILL_STUN_STRIKE) {
+            if (isPlayer1) {
+              battle.player2StatusEffects |= STATUS_STUN;
+              battle.player2StatusDuration = 1;
+            } else {
+              battle.player1StatusEffects |= STATUS_STUN;
+              battle.player1StatusDuration = 1;
+            }
+          } else if (skillUsed == SKILL_SHIELD_WALL) {
+            if (isPlayer1) {
+              battle.player1StatusEffects |= STATUS_SHIELD;
+              battle.player1StatusDuration = 2;
+            } else {
+              battle.player2StatusEffects |= STATUS_SHIELD;
+              battle.player2StatusDuration = 2;
+            }
+          } else if (skillUsed == SKILL_RAGE_MODE) {
+            if (isPlayer1) {
+              battle.player1StatusEffects |= STATUS_RAGE;
+              battle.player1StatusDuration = 2;
+            } else {
+              battle.player2StatusEffects |= STATUS_RAGE;
+              battle.player2StatusDuration = 2;
+            }
+          } else if (skillUsed == SKILL_CRITICAL_EYE) {
+            skillForceCrit = true;
+          } else if (skillUsed == SKILL_DODGE_MASTER) {
+            skillDodgeBonus = 50; // +50% dodge
+            if (isPlayer1) {
+              battle.player1StatusEffects |= STATUS_SHIELD; // Reuse shield for visual indication
+              battle.player1StatusDuration = 2;
+            } else {
+              battle.player2StatusEffects |= STATUS_SHIELD;
+              battle.player2StatusDuration = 2;
+            }
+          } else if (skillUsed == SKILL_BURN_AURA) {
+            if (isPlayer1) {
+              battle.player2StatusEffects |= STATUS_BURN;
+              battle.player2StatusDuration = 3;
+            } else {
+              battle.player1StatusEffects |= STATUS_BURN;
+              battle.player1StatusDuration = 3;
+            }
+          } else if (skillUsed == SKILL_COMBO_BREAKER) {
+            // Reset enemy combo and deal bonus damage
+            if (isPlayer1) {
+              battle.player2ComboCount = 0;
+            } else {
+              battle.player1ComboCount = 0;
+            }
+            skillDamageMultiplier = 120; // 1.2x damage
+          }
+
+          // Set cooldown
+          const cooldown = getSkillCooldown(skillUsed);
+          if (isPlayer1) {
+            if (skillSlot == 1) battle.player1Skill1Cooldown = cooldown;
+            else if (skillSlot == 2) battle.player1Skill2Cooldown = cooldown;
+            else battle.player1Skill3Cooldown = cooldown;
+          } else {
+            if (skillSlot == 1) battle.player2Skill1Cooldown = cooldown;
+            else if (skillSlot == 2) battle.player2Skill2Cooldown = cooldown;
+            else battle.player2Skill3Cooldown = cooldown;
+          }
+
+          // Save attacker energy
+          if (isPlayer1) {
+            setBytes(characterKey(battle.player1Char.toString()), c1.serialize());
+          } else {
+            setBytes(characterKey(battle.player2Char.toString()), c2.serialize());
+          }
+        }
+      }
+    }
+  }
+
+  // Regenerate energy each turn (both players)
+  if (c1.currentEnergy < MAX_ENERGY) {
+    c1.currentEnergy = c1.currentEnergy + ENERGY_PER_TURN > MAX_ENERGY ? MAX_ENERGY : c1.currentEnergy + ENERGY_PER_TURN;
+  }
+  if (c2.currentEnergy < MAX_ENERGY) {
+    c2.currentEnergy = c2.currentEnergy + ENERGY_PER_TURN > MAX_ENERGY ? MAX_ENERGY : c2.currentEnergy + ENERGY_PER_TURN;
+  }
+
   // Check for STUN status on attacker - skip turn if stunned
   const attackerStatus = isPlayer1 ? battle.player1StatusEffects : battle.player2StatusEffects;
   const attackerStatusDuration = isPlayer1 ? battle.player1StatusDuration : battle.player2StatusDuration;
@@ -778,11 +970,16 @@ export function game_executeTurn(args: StaticArray<u8>): void {
     baseDamage = baseDamage + baseDamage / 2;
   }
 
+  // Apply skill damage multiplier
+  if (skillDamageMultiplier != 100) {
+    baseDamage = (baseDamage as u64 * skillDamageMultiplier as u64 / 100) as u16;
+  }
+
   // crit check with equipment bonus
   const totalCritChance = attacker.critChance + attackerCritBonus;
   const critRoll = (simple_random(battle.turnNumber as u64 + Context.timestamp(), 4) % 100) as u16;
   let damage = baseDamage as u64;
-  if (critRoll < totalCritChance) {
+  if (skillForceCrit || critRoll < totalCritChance) {
     damage = damage * 2;
   }
 
@@ -792,8 +989,8 @@ export function game_executeTurn(args: StaticArray<u8>): void {
     damage = damage + damage / 5; // 20% bonus
   }
 
-  // apply defense and dodge with equipment bonus
-  const totalDodgeChance = defender.dodgeChance + defenderDodgeBonus;
+  // apply defense and dodge with equipment bonus (add skill dodge bonus)
+  const totalDodgeChance = defender.dodgeChance + defenderDodgeBonus + skillDodgeBonus;
   let dodged = false;
   if ((simple_random(battle.turnNumber as u64 + Context.timestamp(), 6) % 100) < totalDodgeChance) {
     damage = 0;
@@ -874,6 +1071,18 @@ export function game_executeTurn(args: StaticArray<u8>): void {
   battle.turnNumber += 1;
   battle.currentTurn = battle.currentTurn == 1 ? 2 : 1;
 
+  // Decrement skill cooldowns for both players
+  if (battle.player1Skill1Cooldown > 0) battle.player1Skill1Cooldown -= 1;
+  if (battle.player1Skill2Cooldown > 0) battle.player1Skill2Cooldown -= 1;
+  if (battle.player1Skill3Cooldown > 0) battle.player1Skill3Cooldown -= 1;
+  if (battle.player2Skill1Cooldown > 0) battle.player2Skill1Cooldown -= 1;
+  if (battle.player2Skill2Cooldown > 0) battle.player2Skill2Cooldown -= 1;
+  if (battle.player2Skill3Cooldown > 0) battle.player2Skill3Cooldown -= 1;
+
+  // Save character states (energy regeneration)
+  setBytes(characterKey(battle.player1Char.toString()), c1.serialize());
+  setBytes(characterKey(battle.player2Char.toString()), c2.serialize());
+
   // check finish
   if (battle.player1Hp == 0 || battle.player2Hp == 0) {
     battle.isFinished = true;
@@ -883,7 +1092,8 @@ export function game_executeTurn(args: StaticArray<u8>): void {
 
   setBytes(battleKey(battleId), battle.serialize());
   endNonReentrant();
-  generateEvent('TurnExecuted:' + battleId);
+  const skillEvent = skillUsed != SKILL_NONE ? ':skill=' + skillUsed.toString() : '';
+  generateEvent('TurnExecuted:' + battleId + skillEvent);
 }
 
 // decide wildcard
@@ -1240,6 +1450,126 @@ export function game_readEquipment(args: StaticArray<u8>): StaticArray<u8> {
   const equipmentId = ar.nextString().unwrap();
   if (!hasKey(equipmentKey(equipmentId))) return stringToBytes('null');
   return getBytes(equipmentKey(equipmentId));
+}
+
+// ============================================================================
+// SKILL SYSTEM
+// ============================================================================
+
+// Learn a new skill (costs XP or tokens)
+export function game_learnSkill(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  const ar = new Args(args);
+  const characterId = ar.nextString().unwrap();
+  const skillId = ar.nextU8().unwrap();
+
+  assert(skillId > SKILL_NONE && skillId <= SKILL_COMBO_BREAKER, 'invalid skill');
+  assert(hasKey(characterKey(characterId)), 'character not found');
+
+  const charData = getBytes(characterKey(characterId));
+  const char = Character.deserialize(charData);
+
+  const caller = Context.caller();
+  assert(caller.toString() == char.owner.toString(), 'not character owner');
+
+  // Check if skill already learned
+  const learnedArray = char.learnedSkills.length > 0 ? char.learnedSkills.split(',') : [];
+  for (let i = 0; i < learnedArray.length; i++) {
+    if (parseInt(learnedArray[i]) == skillId) {
+      assert(false, 'skill already learned');
+    }
+  }
+
+  // Require minimum level based on skill
+  const requiredLevel: u16 = skillId <= 3 ? 1 : (skillId <= 6 ? 5 : 10);
+  assert(char.level >= requiredLevel, 'level too low for this skill');
+
+  // Add to learned skills
+  if (char.learnedSkills.length > 0) {
+    char.learnedSkills = char.learnedSkills + ',' + skillId.toString();
+  } else {
+    char.learnedSkills = skillId.toString();
+  }
+
+  setBytes(characterKey(characterId), char.serialize());
+  endNonReentrant();
+  generateEvent('SkillLearned:' + characterId + ':' + skillId.toString());
+}
+
+// Equip a learned skill to a slot
+export function game_equipSkill(args: StaticArray<u8>): void {
+  whenNotPaused();
+  nonReentrant();
+  const ar = new Args(args);
+  const characterId = ar.nextString().unwrap();
+  const skillId = ar.nextU8().unwrap();
+  const slot = ar.nextU8().unwrap(); // 1, 2, or 3
+
+  assert(slot >= 1 && slot <= 3, 'invalid slot');
+  assert(hasKey(characterKey(characterId)), 'character not found');
+
+  const charData = getBytes(characterKey(characterId));
+  const char = Character.deserialize(charData);
+
+  const caller = Context.caller();
+  assert(caller.toString() == char.owner.toString(), 'not character owner');
+
+  // Check if skill is learned (or allow SKILL_NONE to unequip)
+  if (skillId != SKILL_NONE) {
+    const learnedArray = char.learnedSkills.length > 0 ? char.learnedSkills.split(',') : [];
+    let found = false;
+    for (let i = 0; i < learnedArray.length; i++) {
+      if (parseInt(learnedArray[i]) == skillId) {
+        found = true;
+        break;
+      }
+    }
+    assert(found, 'skill not learned');
+  }
+
+  // Equip to slot
+  if (slot == 1) {
+    char.skill1 = skillId;
+  } else if (slot == 2) {
+    char.skill2 = skillId;
+  } else {
+    char.skill3 = skillId;
+  }
+
+  setBytes(characterKey(characterId), char.serialize());
+  endNonReentrant();
+  generateEvent('SkillEquipped:' + characterId + ':slot' + slot.toString() + ':' + skillId.toString());
+}
+
+// Helper function to get skill cooldown based on skill type
+function getSkillCooldown(skillId: u8): u8 {
+  if (skillId == SKILL_POWER_STRIKE) return 3;
+  if (skillId == SKILL_HEAL) return 4;
+  if (skillId == SKILL_POISON_STRIKE) return 2;
+  if (skillId == SKILL_STUN_STRIKE) return 5;
+  if (skillId == SKILL_SHIELD_WALL) return 3;
+  if (skillId == SKILL_RAGE_MODE) return 4;
+  if (skillId == SKILL_CRITICAL_EYE) return 6;
+  if (skillId == SKILL_DODGE_MASTER) return 5;
+  if (skillId == SKILL_BURN_AURA) return 3;
+  if (skillId == SKILL_COMBO_BREAKER) return 4;
+  return 0;
+}
+
+// Helper function to get skill energy cost
+function getSkillEnergyCost(skillId: u8): u8 {
+  if (skillId == SKILL_POWER_STRIKE) return 30;
+  if (skillId == SKILL_HEAL) return 40;
+  if (skillId == SKILL_POISON_STRIKE) return 25;
+  if (skillId == SKILL_STUN_STRIKE) return 50;
+  if (skillId == SKILL_SHIELD_WALL) return 30;
+  if (skillId == SKILL_RAGE_MODE) return 40;
+  if (skillId == SKILL_CRITICAL_EYE) return 60;
+  if (skillId == SKILL_DODGE_MASTER) return 50;
+  if (skillId == SKILL_BURN_AURA) return 35;
+  if (skillId == SKILL_COMBO_BREAKER) return 45;
+  return 0;
 }
 
 // ============================================================================
