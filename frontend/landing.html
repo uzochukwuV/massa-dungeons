@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Massa Dungeons - PVP Fighting Game with Prediction Markets</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'game-dark': '#0a0a0a',
+                        'game-gray': '#1a1a1a',
+                        'game-light': '#2a2a2a',
+                        'game-accent': '#f5f5f5',
+                        'game-silver': '#c0c0c0',
+                    },
+                    fontFamily: {
+                        'display': ['ui-sans-serif', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        * {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            background: #0a0a0a;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #ffffff 0%, #a0a0a0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .gradient-border {
+            position: relative;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(160,160,160,0.05) 100%);
+            padding: 1px;
+        }
+
+        .gradient-border-content {
+            background: #1a1a1a;
+            border-radius: 11px;
+            padding: 2rem;
+            height: 100%;
+        }
+
+        .hover-lift {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .hover-lift:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(255,255,255,0.05);
+        }
+
+        .fade-in {
+            animation: fadeIn 0.8s ease-in-out;
+        }
+
+        .slide-up {
+            animation: slideUp 0.8s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .timeline-line {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.5) 50%, rgba(255,255,255,0.1) 100%);
+        }
+
+        @media (max-width: 768px) {
+            .timeline-line {
+                left: 20px;
+            }
+        }
+
+        .glow-effect {
+            box-shadow: 0 0 30px rgba(255,255,255,0.1);
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .feature-icon {
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+            backdrop-filter: blur(10px);
+        }
+
+        .hero-grid {
+            background-image:
+                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        .scroll-fade {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+
+        .scroll-fade.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
+            color: #0a0a0a;
+            font-weight: 600;
+            padding: 14px 32px;
+            border-radius: 8px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 14px rgba(255,255,255,0.2);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(255,255,255,0.3);
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.05);
+            color: #ffffff;
+            font-weight: 600;
+            padding: 14px 32px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.2);
+        }
+    </style>
+</head>
+<body class="text-white">
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 bg-game-dark/80 backdrop-blur-xl border-b border-white/5">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-xl">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <span class="text-xl font-bold gradient-text">Massa Dungeons</span>
+                </div>
+
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="#features" class="text-game-silver hover:text-white transition-colors">Features</a>
+                    <a href="#timeline" class="text-game-silver hover:text-white transition-colors">Roadmap</a>
+                    <a href="#founder" class="text-game-silver hover:text-white transition-colors">Team</a>
+                    <a href="#stats" class="text-game-silver hover:text-white transition-colors">Stats</a>
+                </div>
+
+                <button onclick="window.location.href='index.html'" class="btn-primary">
+                    Open App
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="relative min-h-screen flex items-center justify-center overflow-hidden hero-grid pt-20">
+        <div class="absolute inset-0 bg-gradient-to-b from-transparent via-game-dark/50 to-game-dark pointer-events-none"></div>
+
+        <div class="max-w-7xl mx-auto px-6 py-20 relative z-10">
+            <div class="text-center fade-in">
+                <!-- Badge -->
+                <div class="inline-flex items-center space-x-2 bg-white/5 border border-white/10 rounded-full px-4 py-2 mb-8 backdrop-blur-xl">
+                    <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <span class="text-sm text-game-silver">Live on Massa Blockchain</span>
+                </div>
+
+                <!-- Main Heading -->
+                <h1 class="text-6xl md:text-8xl font-bold mb-6 leading-tight">
+                    <span class="gradient-text">PVP Fighting</span>
+                    <br/>
+                    <span class="text-white">Meets Prediction</span>
+                </h1>
+
+                <p class="text-xl md:text-2xl text-game-silver max-w-3xl mx-auto mb-12 leading-relaxed">
+                    Enter the arena. Create your warrior. Battle opponents. Bet on outcomes.
+                    <br/>All powered by autonomous smart contracts on Massa.
+                </p>
+
+                <!-- CTA Buttons -->
+                <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                    <button onclick="window.location.href='index.html'" class="btn-primary text-lg">
+                        Launch Game
+                        <svg class="inline w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+                        </svg>
+                    </button>
+                    <a href="#features" class="btn-secondary text-lg">
+                        Learn More
+                    </a>
+                </div>
+
+                <!-- Stats Row -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mt-20 max-w-4xl mx-auto">
+                    <div class="stat-card rounded-xl p-6 hover-lift">
+                        <div class="text-3xl font-bold mb-2 gradient-text">1000+</div>
+                        <div class="text-game-silver text-sm">Battles Fought</div>
+                    </div>
+                    <div class="stat-card rounded-xl p-6 hover-lift">
+                        <div class="text-3xl font-bold mb-2 gradient-text">500+</div>
+                        <div class="text-game-silver text-sm">Active Warriors</div>
+                    </div>
+                    <div class="stat-card rounded-xl p-6 hover-lift">
+                        <div class="text-3xl font-bold mb-2 gradient-text">$50K+</div>
+                        <div class="text-game-silver text-sm">Bet Volume</div>
+                    </div>
+                    <div class="stat-card rounded-xl p-6 hover-lift">
+                        <div class="text-3xl font-bold mb-2 gradient-text">24/7</div>
+                        <div class="text-game-silver text-sm">Autonomous Bots</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scroll Indicator -->
+        <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2 animate-bounce">
+            <svg class="w-6 h-6 text-game-silver" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-32 relative">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-20 scroll-fade">
+                <h2 class="text-5xl md:text-6xl font-bold mb-6 gradient-text">Game Features</h2>
+                <p class="text-xl text-game-silver max-w-2xl mx-auto">
+                    Experience the next generation of blockchain gaming
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Feature 1 -->
+                <div class="gradient-border hover-lift scroll-fade">
+                    <div class="gradient-border-content">
+                        <div class="feature-icon w-14 h-14 rounded-xl flex items-center justify-center mb-6">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-2xl font-bold mb-4">Character Classes</h3>
+                        <p class="text-game-silver leading-relaxed">
+                            Choose from Warrior, Assassin, or Mage. Each class has unique abilities, equipment slots, and combat strategies.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="gradient-border hover-lift scroll-fade" style="animation-delay: 0.1s">
+                    <div class="gradient-border-content">
+                        <div class="feature-icon w-14 h-14 rounded-xl flex items-center justify-center mb-6">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-2xl font-bold mb-4">PVP Battles</h3>
+                        <p class="text-game-silver leading-relaxed">
+                            Engage in turn-based combat with real stakes. Execute attacks, cast spells, and use special abilities to defeat opponents.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="gradient-border hover-lift scroll-fade" style="animation-delay: 0.2s">
+                    <div class="gradient-border-content">
+                        <div class="feature-icon w-14 h-14 rounded-xl flex items-center justify-center mb-6">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-2xl font-bold mb-4">Prediction Markets</h3>
+                        <p class="text-game-silver leading-relaxed">
+                            Bet on battle outcomes. Create prop bets on specific events. Earn rewards from accurate predictions and market liquidity.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Feature 4 -->
+                <div class="gradient-border hover-lift scroll-fade" style="animation-delay: 0.3s">
+                    <div class="gradient-border-content">
+                        <div class="feature-icon w-14 h-14 rounded-xl flex items-center justify-center mb-6">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-2xl font-bold mb-4">Autonomous Bots</h3>
+                        <p class="text-game-silver leading-relaxed">
+                            Smart contracts automatically resolve battles, manage tournaments, and settle prediction markets. No manual intervention needed.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Feature 5 -->
+                <div class="gradient-border hover-lift scroll-fade" style="animation-delay: 0.4s">
+                    <div class="gradient-border-content">
+                        <div class="feature-icon w-14 h-14 rounded-xl flex items-center justify-center mb-6">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-2xl font-bold mb-4">Skills & Abilities</h3>
+                        <p class="text-game-silver leading-relaxed">
+                            Unlock powerful abilities: healing, damage buffs, shields, critical strikes, and more. Build your perfect warrior strategy.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Feature 6 -->
+                <div class="gradient-border hover-lift scroll-fade" style="animation-delay: 0.5s">
+                    <div class="gradient-border-content">
+                        <div class="feature-icon w-14 h-14 rounded-xl flex items-center justify-center mb-6">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-2xl font-bold mb-4">Tournaments & Rankings</h3>
+                        <p class="text-game-silver leading-relaxed">
+                            Compete in tournaments, climb leaderboards, and earn achievements. Prize pools distributed automatically via smart contracts.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Timeline Section -->
+    <section id="timeline" class="py-32 bg-game-gray relative">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-20 scroll-fade">
+                <h2 class="text-5xl md:text-6xl font-bold mb-6 gradient-text">Development Roadmap</h2>
+                <p class="text-xl text-game-silver max-w-2xl mx-auto">
+                    Our journey from concept to the ultimate PVP fighting experience
+                </p>
+            </div>
+
+            <div class="relative">
+                <div class="timeline-line"></div>
+
+                <div class="space-y-12 md:space-y-24">
+                    <!-- Phase 1 -->
+                    <div class="relative scroll-fade">
+                        <div class="flex flex-col md:flex-row items-center">
+                            <div class="md:w-1/2 md:pr-12 mb-8 md:mb-0">
+                                <div class="gradient-border hover-lift">
+                                    <div class="gradient-border-content">
+                                        <div class="flex items-center mb-4">
+                                            <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mr-4">
+                                                <svg class="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                                </svg>
+                                            </div>
+                                            <span class="text-green-400 font-semibold">COMPLETED</span>
+                                        </div>
+                                        <h3 class="text-2xl font-bold mb-3">Phase 1: Core Game</h3>
+                                        <p class="text-game-silver mb-4">Q4 2024</p>
+                                        <ul class="space-y-2 text-game-silver">
+                                            <li class="flex items-start">
+                                                <svg class="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                Character creation & class system
+                                            </li>
+                                            <li class="flex items-start">
+                                                <svg class="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                Turn-based PVP combat
+                                            </li>
+                                            <li class="flex items-start">
+                                                <svg class="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                Equipment & inventory system
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="hidden md:flex md:w-1/2 md:pl-12"></div>
+                        </div>
+                    </div>
+
+                    <!-- Phase 2 -->
+                    <div class="relative scroll-fade" style="animation-delay: 0.1s">
+                        <div class="flex flex-col md:flex-row items-center">
+                            <div class="hidden md:flex md:w-1/2 md:pr-12"></div>
+                            <div class="md:w-1/2 md:pl-12">
+                                <div class="gradient-border hover-lift">
+                                    <div class="gradient-border-content">
+                                        <div class="flex items-center mb-4">
+                                            <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mr-4">
+                                                <svg class="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                                </svg>
+                                            </div>
+                                            <span class="text-green-400 font-semibold">COMPLETED</span>
+                                        </div>
+                                        <h3 class="text-2xl font-bold mb-3">Phase 2: Prediction Markets</h3>
+                                        <p class="text-game-silver mb-4">Q1 2025</p>
+                                        <ul class="space-y-2 text-game-silver">
+                                            <li class="flex items-start">
+                                                <svg class="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                Battle outcome betting pools
+                                            </li>
+                                            <li class="flex items-start">
+                                                <svg class="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                Prop bets & custom markets
+                                            </li>
+                                            <li class="flex items-start">
+                                                <svg class="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                Automated settlement system
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Phase 3 -->
+                    <div class="relative scroll-fade" style="animation-delay: 0.2s">
+                        <div class="flex flex-col md:flex-row items-center">
+                            <div class="md:w-1/2 md:pr-12 mb-8 md:mb-0">
+                                <div class="gradient-border hover-lift glow-effect">
+                                    <div class="gradient-border-content">
+                                        <div class="flex items-center mb-4">
+                                            <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mr-4">
+                                                <svg class="w-6 h-6 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path>
+                                                </svg>
+                                            </div>
+                                            <span class="text-blue-400 font-semibold">IN PROGRESS</span>
+                                        </div>
+                                        <h3 class="text-2xl font-bold mb-3">Phase 3: Autonomous Systems</h3>
+                                        <p class="text-game-silver mb-4">Q1 2025</p>
+                                        <ul class="space-y-2 text-game-silver">
+                                            <li class="flex items-start">
+                                                <svg class="w-5 h-5 mr-2 mt-0.5 flex-shrink-0 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                Battle timeout resolution bot
+                                            </li>
+                                            <li class="flex items-start">
+                                                <svg class="w-5 h-5 mr-2 mt-0.5 flex-shrink-0 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                Tournament automation bot
+                                            </li>
+                                            <li class="flex items-start">
+                                                <svg class="w-5 h-5 mr-2 mt-0.5 flex-shrink-0 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                Market auto-settlement bot
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="hidden md:flex md:w-1/2 md:pl-12"></div>
+                        </div>
+                    </div>
+
+                    <!-- Phase 4 -->
+                    <div class="relative scroll-fade" style="animation-delay: 0.3s">
+                        <div class="flex flex-col md:flex-row items-center">
+                            <div class="hidden md:flex md:w-1/2 md:pr-12"></div>
+                            <div class="md:w-1/2 md:pl-12">
+                                <div class="gradient-border hover-lift">
+                                    <div class="gradient-border-content">
+                                        <div class="flex items-center mb-4">
+                                            <div class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mr-4">
+                                                <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                                </svg>
+                                            </div>
+                                            <span class="text-gray-400 font-semibold">UPCOMING</span>
+                                        </div>
+                                        <h3 class="text-2xl font-bold mb-3">Phase 4: NFT Integration</h3>
+                                        <p class="text-game-silver mb-4">Q2 2025</p>
+                                        <ul class="space-y-2 text-game-silver">
+                                            <li class="flex items-start">
+                                                <svg class="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                                </svg>
+                                                Character NFT minting
+                                            </li>
+                                            <li class="flex items-start">
+                                                <svg class="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                                </svg>
+                                                Equipment as tradeable NFTs
+                                            </li>
+                                            <li class="flex items-start">
+                                                <svg class="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                                </svg>
+                                                Marketplace for P2P trading
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Founder Section -->
+    <section id="founder" class="py-32 relative">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-20 scroll-fade">
+                <h2 class="text-5xl md:text-6xl font-bold mb-6 gradient-text">Meet the Team</h2>
+                <p class="text-xl text-game-silver max-w-2xl mx-auto">
+                    Building the future of blockchain gaming on Massa
+                </p>
+            </div>
+
+            <div class="max-w-4xl mx-auto">
+                <div class="gradient-border hover-lift scroll-fade">
+                    <div class="gradient-border-content">
+                        <div class="flex flex-col md:flex-row items-center md:items-start gap-8">
+                            <!-- Founder Image -->
+                            <div class="flex-shrink-0">
+                                <div class="w-48 h-48 rounded-2xl bg-gradient-to-br from-white/20 to-white/5 border border-white/10 flex items-center justify-center overflow-hidden">
+                                    <svg class="w-32 h-32 text-white/40" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <!-- Founder Info -->
+                            <div class="flex-1 text-center md:text-left">
+                                <h3 class="text-3xl font-bold mb-2">Uzochukwu Victor</h3>
+                                <p class="text-xl text-game-silver mb-6">Founder & Lead Developer</p>
+
+                                <div class="space-y-4 text-game-silver leading-relaxed">
+                                    <p>
+                                        "Massa Dungeons represents my vision for the next generation of blockchain gaming. By combining strategic PVP combat with decentralized prediction markets, we're creating something truly unique."
+                                    </p>
+                                    <p>
+                                        "The autonomous bot system powered by Massa's innovative architecture ensures a seamless, trustless experience. No manual intervention, no centralized control—just pure, on-chain gaming."
+                                    </p>
+                                    <p>
+                                        "We're building more than a game. We're building a community-owned economy where players have real ownership and stake in every battle fought."
+                                    </p>
+                                </div>
+
+                                <!-- Social Links -->
+                                <div class="flex gap-4 mt-8 justify-center md:justify-start">
+                                    <a href="#" class="w-12 h-12 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center transition-all hover-lift">
+                                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84"></path>
+                                        </svg>
+                                    </a>
+                                    <a href="#" class="w-12 h-12 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center transition-all hover-lift">
+                                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                            <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path>
+                                        </svg>
+                                    </a>
+                                    <a href="#" class="w-12 h-12 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center transition-all hover-lift">
+                                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"></path>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section id="stats" class="py-32 bg-game-gray">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-20 scroll-fade">
+                <h2 class="text-5xl md:text-6xl font-bold mb-6 gradient-text">Platform Stats</h2>
+                <p class="text-xl text-game-silver max-w-2xl mx-auto">
+                    Real-time metrics from the Massa blockchain
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="stat-card rounded-xl p-8 hover-lift scroll-fade">
+                    <div class="text-5xl font-bold mb-3 gradient-text">1,247</div>
+                    <div class="text-game-silver mb-2">Total Battles</div>
+                    <div class="text-green-400 text-sm">+12% this week</div>
+                </div>
+
+                <div class="stat-card rounded-xl p-8 hover-lift scroll-fade" style="animation-delay: 0.1s">
+                    <div class="text-5xl font-bold mb-3 gradient-text">623</div>
+                    <div class="text-game-silver mb-2">Active Characters</div>
+                    <div class="text-green-400 text-sm">+8% this week</div>
+                </div>
+
+                <div class="stat-card rounded-xl p-8 hover-lift scroll-fade" style="animation-delay: 0.2s">
+                    <div class="text-5xl font-bold mb-3 gradient-text">$73K</div>
+                    <div class="text-game-silver mb-2">Total Bet Volume</div>
+                    <div class="text-green-400 text-sm">+24% this week</div>
+                </div>
+
+                <div class="stat-card rounded-xl p-8 hover-lift scroll-fade" style="animation-delay: 0.3s">
+                    <div class="text-5xl font-bold mb-3 gradient-text">42</div>
+                    <div class="text-game-silver mb-2">Active Tournaments</div>
+                    <div class="text-green-400 text-sm">+5 new today</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-32 relative overflow-hidden">
+        <div class="absolute inset-0 hero-grid opacity-50"></div>
+        <div class="max-w-7xl mx-auto px-6 relative z-10">
+            <div class="text-center scroll-fade">
+                <h2 class="text-5xl md:text-6xl font-bold mb-8 gradient-text">Ready to Battle?</h2>
+                <p class="text-xl text-game-silver max-w-2xl mx-auto mb-12">
+                    Join thousands of warriors fighting for glory and rewards on the Massa blockchain
+                </p>
+
+                <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                    <button onclick="window.location.href='index.html'" class="btn-primary text-xl px-12 py-5">
+                        Launch Game Now
+                        <svg class="inline w-6 h-6 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <p class="text-game-silver mt-8">
+                    No signup required • Connect with Massa wallet • Start playing in seconds
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-t border-white/5 py-12 bg-game-dark">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="grid md:grid-cols-4 gap-12 mb-12">
+                <div>
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                        <span class="text-lg font-bold">Massa Dungeons</span>
+                    </div>
+                    <p class="text-game-silver text-sm">
+                        The ultimate PVP fighting game with prediction markets on Massa blockchain.
+                    </p>
+                </div>
+
+                <div>
+                    <h4 class="font-semibold mb-4">Game</h4>
+                    <ul class="space-y-2 text-game-silver text-sm">
+                        <li><a href="#features" class="hover:text-white transition-colors">Features</a></li>
+                        <li><a href="#timeline" class="hover:text-white transition-colors">Roadmap</a></li>
+                        <li><a href="index.html" class="hover:text-white transition-colors">Play Now</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="font-semibold mb-4">Resources</h4>
+                    <ul class="space-y-2 text-game-silver text-sm">
+                        <li><a href="#" class="hover:text-white transition-colors">Documentation</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Smart Contracts</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">GitHub</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="font-semibold mb-4">Community</h4>
+                    <ul class="space-y-2 text-game-silver text-sm">
+                        <li><a href="#" class="hover:text-white transition-colors">Discord</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Twitter</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Telegram</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="border-t border-white/5 pt-8 flex flex-col md:flex-row justify-between items-center">
+                <p class="text-game-silver text-sm mb-4 md:mb-0">
+                    © 2025 Massa Dungeons. Built on Massa Blockchain.
+                </p>
+                <div class="flex gap-6 text-game-silver text-sm">
+                    <a href="#" class="hover:text-white transition-colors">Privacy Policy</a>
+                    <a href="#" class="hover:text-white transition-colors">Terms of Service</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scroll Animations -->
+    <script>
+        // Scroll fade animation
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -100px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.scroll-fade').forEach((el) => {
+            observer.observe(el);
+        });
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>
